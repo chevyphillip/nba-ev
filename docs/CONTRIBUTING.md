@@ -1,220 +1,240 @@
-# Contributing Guide
+# Contributing to NBA Data Analytics Platform
 
-Thank you for your interest in contributing to the NBA Stats and Betting Analysis Tool! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to the NBA Data Analytics Platform! This document provides guidelines and instructions for contributing.
 
-## Development Setup
+## Code of Conduct
 
-### Environment Setup
+By participating in this project, you agree to abide by our Code of Conduct:
 
-1. **Python Version**
-   - Use Python 3.11 or higher
-   - We recommend using `pyenv` for Python version management
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Maintain professional discourse
+- Follow project standards and guidelines
 
-2. **Dependencies**
-   - We use `uv` for dependency management
-   - Install dependencies: `uv sync`
-   - Add new dependencies to `pyproject.toml`
+## Getting Started
 
-3. **Environment Variables**
-   - Copy `.env.example` to `.env`
-   - Add required API keys
-   - Never commit actual API keys to the repository
+1. **Fork the Repository**
 
-### Code Style
+   ```bash
+   git clone https://github.com/yourusername/nba-ev.git
+   cd nba-ev
+   ```
 
-We follow strict PEP 8 guidelines with some additional requirements:
+2. **Set Up Development Environment**
 
-1. **Type Hints**
-   - Use type hints for all function parameters and return values
-   - Use `Optional` for parameters that can be None
-   - Use `Any` sparingly and only when necessary
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-2. **Docstrings**
-   - Use Google-style docstrings
-   - Include type information, parameters, and return values
-   - Add examples for complex functions
+3. **Create a Feature Branch**
+
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+## Development Workflow
+
+### 1. Code Style
+
+We follow strict Python coding standards:
+
+- **PEP 8** style guide
+- **Type hints** for all functions
+- **Docstrings** for all modules, classes, and functions
+- **Black** for code formatting
+- **isort** for import sorting
+
+```bash
+# Format code
+black src/ tests/
+isort src/ tests/
+
+# Type checking
+mypy src/
+
+# Linting
+pylint src/
+```
+
+### 2. Testing
+
+All new features must include tests:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src tests/
+
+# Run specific test file
+pytest tests/test_your_feature.py
+```
+
+### 3. Documentation
+
+Update documentation for any changes:
+
+1. **Code Documentation**
+   - Clear docstrings
+   - Type hints
+   - Inline comments for complex logic
+
+2. **Project Documentation**
+   - Update relevant .md files in docs/
+   - Add new guides if needed
+   - Update README.md if necessary
+
+### 4. Commit Guidelines
+
+Follow conventional commits:
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Types:
+
+- feat: New feature
+- fix: Bug fix
+- docs: Documentation changes
+- style: Code style changes
+- refactor: Code refactoring
+- test: Adding tests
+- chore: Maintenance
 
 Example:
 
-```python
-def calculate_efficiency(
-    stats: pd.DataFrame,
-    weights: Optional[Dict[str, float]] = None
-) -> pd.DataFrame:
-    """
-    Calculate efficiency metrics for players or teams.
+```
+feat(collectors): add rate limiting to NBA API requests
 
-    Args:
-        stats: DataFrame containing raw statistics
-        weights: Optional dictionary of metric weights
-
-    Returns:
-        DataFrame with calculated efficiency metrics
-
-    Example:
-        >>> weights = {"points": 1.0, "assists": 0.7}
-        >>> calculate_efficiency(player_stats, weights)
-    """
+- Added rate limiting decorator
+- Updated configuration settings
+- Added tests for rate limiting
 ```
 
-3. **Code Formatting**
-   - Use `black` for code formatting
-   - Maximum line length: 88 characters
-   - Use trailing commas in multi-line collections
+## Pull Request Process
 
-### Project Structure
+1. **Update Documentation**
+   - Add/update docstrings
+   - Update relevant documentation files
+   - Add comments for complex logic
+
+2. **Run Tests**
+
+   ```bash
+   # Ensure all tests pass
+   pytest
+   
+   # Check coverage
+   pytest --cov=src tests/
+   ```
+
+3. **Code Quality**
+
+   ```bash
+   # Format code
+   black src/ tests/
+   isort src/ tests/
+   
+   # Run type checking
+   mypy src/
+   
+   # Run linting
+   pylint src/
+   ```
+
+4. **Create Pull Request**
+   - Clear title following commit conventions
+   - Detailed description of changes
+   - Link to related issues
+   - List of testing steps
+
+5. **Review Process**
+   - Address reviewer comments
+   - Update tests if needed
+   - Maintain clean commit history
+
+## Project Structure
 
 ```
 nba-ev/
-├── docs/
-│   ├── API.md
-│   └── CONTRIBUTING.md
-├── nba_ev/
-│   ├── __init__.py
-│   ├── collectors/
-│   │   ├── __init__.py
-│   │   ├── basketball_reference.py
-│   │   ├── nba_api.py
-│   │   └── odds_api.py
-│   ├── analyzers/
-│   │   ├── __init__.py
-│   │   ├── efficiency.py
-│   │   └── simulation.py
-│   └── utils/
-│       ├── __init__.py
-│       └── data_processing.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_collectors.py
-│   └── test_analyzers.py
-├── .env
-├── .gitignore
-├── LICENSE
-├── README.md
-└── pyproject.toml
+├── data/                  # Data storage
+├── docs/                 # Documentation
+├── monitoring/          # Monitoring config
+├── notebooks/          # Jupyter notebooks
+├── scripts/            # Utility scripts
+├── src/                # Source code
+├── tests/             # Test suite
+└── visualizations/    # Output graphics
 ```
 
-### Testing
+## Development Guidelines
 
-1. **Test Coverage**
-   - Write tests for all new features
-   - Maintain minimum 80% test coverage
-   - Use pytest for testing
+### 1. Code Organization
 
-2. **Test Structure**
-   - Place tests in the `tests/` directory
-   - Mirror the main package structure
-   - Use meaningful test names and descriptions
+- Keep modules focused and single-purpose
+- Use clear, descriptive names
+- Follow project structure
+- Maintain separation of concerns
 
-Example test:
+### 2. Error Handling
 
-```python
-def test_efficiency_calculation():
-    """Test that efficiency metrics are calculated correctly."""
-    test_data = pd.DataFrame({
-        "points": [10, 20],
-        "assists": [5, 8]
-    })
-    result = calculate_efficiency(test_data)
-    assert "efficiency" in result.columns
-    assert result["efficiency"].dtype == float
-```
+- Use appropriate exception types
+- Add error logging
+- Provide helpful error messages
+- Handle edge cases
 
-3. **Running Tests**
+### 3. Performance
 
-   ```bash
-   pytest
-   pytest --cov=nba_ev  # with coverage
-   ```
+- Use vectorized operations
+- Implement caching where appropriate
+- Monitor memory usage
+- Profile code when needed
 
-### Git Workflow
+### 4. Security
 
-1. **Branches**
-   - `main`: stable release branch
-   - `develop`: development branch
-   - Feature branches: `feature/description`
-   - Bug fixes: `fix/description`
-
-2. **Commits**
-   - Use clear, descriptive commit messages
-   - Follow conventional commits format
-   - Reference issues when applicable
-
-Example commits:
-
-```
-feat(simulation): add Monte Carlo game simulation
-fix(api): handle rate limiting in odds API
-docs(readme): update installation instructions
-```
-
-3. **Pull Requests**
-   - Create PRs against the `develop` branch
-   - Include tests for new features
-   - Update documentation as needed
-   - Add to CHANGELOG.md
-
-### Documentation
-
-1. **Code Documentation**
-   - Document all public functions and classes
-   - Include examples in docstrings
-   - Update API.md for new features
-
-2. **README Updates**
-   - Keep installation instructions current
-   - Document new features
-   - Update requirements
-
-3. **Changelog**
-   - Add significant changes to CHANGELOG.md
-   - Follow semantic versioning
-   - Include migration instructions
-
-## Performance Guidelines
-
-1. **Data Processing**
-   - Use vectorized operations with pandas
-   - Avoid loops when possible
-   - Profile code for bottlenecks
-
-2. **API Usage**
-   - Implement rate limiting
-   - Use async/await for I/O operations
-   - Cache responses when appropriate
-
-3. **Memory Management**
-   - Monitor memory usage
-   - Clean up large objects
-   - Use generators for large datasets
+- Never commit sensitive data
+- Use environment variables
+- Validate inputs
+- Follow security best practices
 
 ## Release Process
 
-1. **Version Bumping**
+1. **Version Bump**
    - Update version in pyproject.toml
    - Update CHANGELOG.md
    - Create release notes
 
 2. **Testing**
    - Run full test suite
-   - Check documentation
-   - Verify examples
+   - Verify documentation
+   - Check dependencies
 
 3. **Release**
-   - Tag release in git
-   - Create GitHub release
-   - Update documentation
+   - Create release branch
+   - Tag release
+   - Update main branch
 
-## Questions and Support
+## Getting Help
 
-- Open an issue for bugs or features
-- Use discussions for questions
-- Tag issues appropriately
+- Check existing documentation
+- Search closed issues
+- Join discussions
+- Ask questions in issues
 
-## Code of Conduct
+## Recognition
 
-Please note that this project is released with a Contributor Code of Conduct. By participating in this project you agree to abide by its terms.
+Contributors will be:
 
-## License
+- Listed in CONTRIBUTORS.md
+- Mentioned in release notes
+- Credited in documentation
 
-By contributing, you agree that your contributions will be licensed under the project's MIT License.
+Thank you for contributing to the NBA Data Analytics Platform!

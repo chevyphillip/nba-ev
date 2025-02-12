@@ -1,223 +1,258 @@
-# Data Analysis Guide
+# NBA-EV Data Analysis Guide
 
-This guide describes the data analysis procedures and visualizations available in the NBA-EV project.
+## Overview
 
-## Available Data
+The NBA-EV project implements comprehensive data analysis methodologies to extract insights from NBA statistics. This guide documents the analysis modules, metrics calculations, and statistical methods used in the project.
 
-The project collects and processes several types of NBA statistics:
+## Analysis Modules
 
-### Team Statistics (`team_stats`)
+### 1. Team Efficiency Analysis (`src/analysis/efficiency.py`)
 
-- Basic game data from Basketball Reference:
-  - `start_time`: Game start time
-  - `away_team`: Away team name
-  - `home_team`: Home team name
-  - `away_team_score`: Away team score
-  - `home_team_score`: Home team score
-
-- Advanced metrics from NBA API:
-  - `offensive_rating`: Points scored per 100 possessions
-  - `defensive_rating`: Points allowed per 100 possessions
-  - `net_rating`: Point differential per 100 possessions
-  - `pace`: Possessions per 48 minutes
-  - `win_pct`: Win percentage
-  - `ast_pct`: Assist percentage
-  - `ast_to`: Assist to turnover ratio
-  - `ast_ratio`: Assist ratio
-  - `efg_pct`: Effective field goal percentage
-  - `ts_pct`: True shooting percentage
-
-### Efficiency Metrics (`team_efficiency`, `player_efficiency`)
-
-- Team efficiency metrics:
-  - `offensive_efficiency`: Normalized offensive rating
-  - `defensive_efficiency`: Normalized defensive rating
-  - Various advanced statistics ratios
-
-- Player efficiency metrics:
-  - `name`: Player name
-  - `team`: Team abbreviation
-  - `pie`: Player Impact Estimate
-  - `usage_pct`: Usage percentage
-  - Efficiency ratings and percentages
-
-### Pace Factors (`pace_factors`)
-
-- `team`: Team abbreviation
-- `pace`: Team pace
-- `possessions`: Total possessions
-- `pace_factor`: Relative pace compared to league average
-
-## Analysis Procedures
-
-### 1. Data Loading
+#### Offensive and Defensive Ratings
 
 ```python
-import pandas as pd
-from pathlib import Path
-
-# Load most recent data file
-data_dir = Path("data")
-latest_file = sorted(data_dir.glob("nba_stats_*.xlsx"))[-1]
-data = pd.read_excel(latest_file, sheet_name=None)
-
-# Access specific sheets
-team_stats = data['team_stats']
-player_stats = data['player_stats']
-team_efficiency = data['team_efficiency']
-player_efficiency = data['player_efficiency']
-pace_factors = data['pace_factors']
-```
-
-### 2. Team Performance Analysis
-
-#### Offensive vs Defensive Ratings
-
-```python
-plt.figure(figsize=(12, 8))
-plt.scatter(team_stats['offensive_rating'], 
-           team_stats['defensive_rating'], 
-           alpha=0.6)
-
-# Add team labels
-for i, txt in enumerate(team_stats['team']):
-    plt.annotate(str(txt), 
-                (team_stats['offensive_rating'].iloc[i],
-                 team_stats['defensive_rating'].iloc[i]))
-
-plt.xlabel('Offensive Rating')
-plt.ylabel('Defensive Rating')
-plt.title('Team Offensive vs Defensive Ratings')
-```
-
-#### Pace Analysis
-
-```python
-plt.figure(figsize=(15, 6))
-sns.barplot(data=pace_factors.sort_values('pace', ascending=False),
-            x='team', y='pace')
-
-plt.xticks(rotation=45, ha='right')
-plt.title('Team Pace Factors')
-```
-
-#### Scoring Distribution
-
-```python
-# Combine home and away scores
-scores = pd.concat([
-    team_stats['home_team_score'],
-    team_stats['away_team_score']
-])
-
-plt.figure(figsize=(12, 6))
-sns.boxplot(data=pd.DataFrame({'Points': scores}))
-plt.title('Distribution of Team Scoring')
-```
-
-### 3. Win Percentage Analysis
-
-```python
-plt.figure(figsize=(10, 12))
-sorted_teams = team_stats.sort_values('win_pct', ascending=True)
-bars = plt.barh(sorted_teams['team'], sorted_teams['win_pct'])
-
-# Add percentage labels
-for bar in bars:
-    width = bar.get_width()
-    plt.text(width, bar.get_y() + bar.get_height()/2,
-            f'{width:.3f}',
-            ha='left', va='center')
-
-plt.title('Team Win Percentages')
-```
-
-## Visualization Best Practices
-
-1. **Color Usage**
-   - Use colorblind-friendly palettes
-   - Apply consistent color schemes across related visualizations
-   - Use color to highlight important insights
-
-2. **Layout and Formatting**
-   - Set appropriate figure sizes for each plot type
-   - Use clear, readable fonts and labels
-   - Include titles and axis labels
-   - Add legends where necessary
-
-3. **Data Representation**
-   - Choose appropriate plot types for different metrics
-   - Use error bars or confidence intervals where applicable
-   - Include reference lines (e.g., league averages)
-
-4. **Interactivity**
-   - Add tooltips for detailed information
-   - Enable zooming for dense visualizations
-   - Allow filtering and sorting of data
-
-## Common Analysis Tasks
-
-### 1. Team Performance Assessment
-
-```python
-def analyze_team_performance(team_name: str, team_stats: pd.DataFrame) -> None:
-    """Analyze performance metrics for a specific team."""
-    team_data = team_stats[team_stats['team'] == team_name].iloc[0]
+def calculate_team_efficiency(team_stats: pd.DataFrame) -> pd.DataFrame:
+    """Calculate comprehensive team efficiency metrics."""
+    efficiency = team_stats.copy()
     
-    print(f"Performance Analysis for {team_name}")
-    print(f"Offensive Rating: {team_data['offensive_rating']:.1f}")
-    print(f"Defensive Rating: {team_data['defensive_rating']:.1f}")
-    print(f"Net Rating: {team_data['net_rating']:.1f}")
-    print(f"Win Percentage: {team_data['win_pct']:.3f}")
-```
-
-### 2. League-wide Trends
-
-```python
-def analyze_league_trends(team_stats: pd.DataFrame) -> None:
-    """Analyze league-wide statistical trends."""
-    print("League Averages:")
-    metrics = ['offensive_rating', 'defensive_rating', 'pace']
-    for metric in metrics:
-        mean = team_stats[metric].mean()
-        std = team_stats[metric].std()
-        print(f"{metric}: {mean:.1f} ± {std:.1f}")
-```
-
-### 3. Statistical Correlations
-
-```python
-def analyze_correlations(team_stats: pd.DataFrame) -> None:
-    """Analyze correlations between key metrics."""
-    metrics = ['offensive_rating', 'defensive_rating', 
-              'pace', 'win_pct']
-    correlation_matrix = team_stats[metrics].corr()
+    # Basic Four Factors
+    efficiency['four_factors_score'] = (
+        0.4 * efficiency['efg_pct'] +
+        0.25 * efficiency['tov_pct'] * -1 +
+        0.2 * efficiency['oreb_pct'] +
+        0.15 * efficiency['ft_rate']
+    )
     
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
-    plt.title('Correlation Matrix of Key Metrics')
-```
-
-## Data Export
-
-### Excel Export
-
-```python
-def export_analysis(data: dict, filename: str) -> None:
-    """Export analysis results to Excel."""
-    with pd.ExcelWriter(filename) as writer:
-        for sheet_name, df in data.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-```
-
-### Visualization Export
-
-```python
-def save_visualizations(output_dir: str = 'visualizations') -> None:
-    """Save all visualizations to files."""
-    Path(output_dir).mkdir(exist_ok=True)
+    # Per 100 Possessions Stats
+    if 'possessions' in efficiency.columns:
+        stats_per_100 = ['points', 'assists', 'rebounds']
+        for stat in stats_per_100:
+            efficiency[f'{stat}_per_100'] = (
+                efficiency[stat] / efficiency['possessions'] * 100
+            )
     
-    # Save each plot
-    plt.savefig(f'{output_dir}/plot_name.png', 
-                dpi=300, bbox_inches='tight')
+    return efficiency
 ```
+
+#### Pace Factors
+
+```python
+def calculate_pace_factors(team_stats: pd.DataFrame) -> pd.DataFrame:
+    """Calculate comprehensive pace and tempo metrics."""
+    pace = team_stats.copy()
+    
+    # Basic Pace (Possessions per 48 minutes)
+    if 'possessions' in pace.columns:
+        pace['pace_per_48'] = pace['possessions'] / (pace['minutes'] / 48)
+        
+        # Relative Pace
+        league_avg_pace = pace['pace'].mean()
+        pace['relative_pace'] = (
+            (pace['pace'] - league_avg_pace) / league_avg_pace * 100
+        )
+    
+    return pace
+```
+
+### 2. Player Analysis
+
+#### Player Efficiency
+
+```python
+def calculate_player_efficiency(player_stats: pd.DataFrame) -> pd.DataFrame:
+    """Calculate player efficiency metrics."""
+    efficiency = player_stats.copy()
+    
+    # Usage Tiers
+    efficiency['usage_tier'] = pd.qcut(
+        efficiency['usg%'].fillna(efficiency['usg%'].mean()),
+        q=5,
+        labels=['Very Low', 'Low', 'Medium', 'High', 'Very High']
+    )
+    
+    # Scoring Efficiency
+    efficiency['points_per_minute'] = (
+        efficiency['ppg_x'] / efficiency['mpg_x'].replace(0, 1)
+    )
+    
+    return efficiency
+```
+
+### 3. Matchup Analysis
+
+```python
+def calculate_matchup_adjustments(
+    team_stats: pd.DataFrame,
+    player_stats: pd.DataFrame
+) -> pd.DataFrame:
+    """Calculate matchup-based adjustments."""
+    adjustments = pd.DataFrame()
+    
+    # Defense Factors
+    league_avg_drtg = team_stats['defensive_rating'].mean()
+    defense_factors = team_stats['defensive_rating'] / league_avg_drtg
+    
+    # Pace Factors
+    league_avg_pace = team_stats['pace'].mean()
+    pace_factors = team_stats['pace'] / league_avg_pace
+    
+    adjustments = pd.DataFrame({
+        'team': team_stats['team'],
+        'defense_factor': defense_factors,
+        'pace_factor': pace_factors
+    })
+    
+    return adjustments
+```
+
+## Statistical Methods
+
+### 1. Data Normalization
+
+```python
+def normalize_statistics(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
+    """Normalize statistical columns to a 0-1 scale."""
+    df_norm = df.copy()
+    for col in columns:
+        df_norm[f'{col}_normalized'] = (
+            (df[col] - df[col].min()) /
+            (df[col].max() - df[col].min())
+        )
+    return df_norm
+```
+
+### 2. Outlier Detection
+
+```python
+def detect_outliers(df: pd.DataFrame, column: str, threshold: float = 1.5) -> pd.Series:
+    """Detect statistical outliers using IQR method."""
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    
+    return df[
+        (df[column] < Q1 - threshold * IQR) |
+        (df[column] > Q3 + threshold * IQR)
+    ]
+```
+
+### 3. Performance Metrics
+
+```python
+def calculate_performance_metrics(stats_df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate comprehensive performance metrics."""
+    metrics = stats_df.copy()
+    
+    # Shooting Efficiency
+    metrics['true_shooting'] = (
+        metrics['points'] /
+        (2 * (metrics['fga'] + 0.44 * metrics['fta']))
+    )
+    
+    # Usage Rate
+    metrics['usage_rate'] = (
+        (metrics['fga'] + 0.44 * metrics['fta'] + metrics['turnovers']) /
+        metrics['possessions']
+    )
+    
+    return metrics
+```
+
+## Analysis Workflows
+
+### 1. Team Performance Analysis
+
+```python
+def analyze_team_performance(team_stats: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """Complete team performance analysis workflow."""
+    results = {}
+    
+    # Efficiency metrics
+    results['efficiency'] = calculate_team_efficiency(team_stats)
+    
+    # Pace analysis
+    results['pace'] = calculate_pace_factors(team_stats)
+    
+    # Performance metrics
+    results['performance'] = calculate_performance_metrics(team_stats)
+    
+    return results
+```
+
+### 2. Player Performance Analysis
+
+```python
+def analyze_player_performance(
+    player_stats: pd.DataFrame,
+    min_minutes: float = 10.0
+) -> Dict[str, pd.DataFrame]:
+    """Complete player performance analysis workflow."""
+    results = {}
+    
+    # Filter for minimum minutes
+    qualified_players = player_stats[player_stats['mpg_x'] >= min_minutes]
+    
+    # Efficiency metrics
+    results['efficiency'] = calculate_player_efficiency(qualified_players)
+    
+    # Performance metrics
+    results['performance'] = calculate_performance_metrics(qualified_players)
+    
+    return results
+```
+
+## Best Practices
+
+### 1. Data Quality
+
+- Handle missing values appropriately
+- Remove or flag outliers
+- Validate input data types
+- Check for data consistency
+
+### 2. Performance
+
+- Use vectorized operations
+- Optimize memory usage
+- Cache intermediate results
+- Profile computation time
+
+### 3. Documentation
+
+- Document assumptions
+- Explain methodologies
+- Include example usage
+- Provide interpretation guides
+
+### 4. Testing
+
+- Unit test core functions
+- Validate output ranges
+- Check edge cases
+- Verify calculations
+
+## Future Enhancements
+
+1. **Advanced Analytics**:
+   - Player impact metrics
+   - Lineup optimization
+   - Win probability models
+   - Shot quality analysis
+
+2. **Machine Learning**:
+   - Performance prediction
+   - Player clustering
+   - Injury risk assessment
+   - Game outcome prediction
+
+3. **Real-time Analysis**:
+   - Live game analytics
+   - In-game adjustments
+   - Performance tracking
+   - Trend analysis
+
+4. **Visualization**:
+   - Interactive dashboards
+   - Custom plot types
+   - Real-time updates
+   - Export capabilities

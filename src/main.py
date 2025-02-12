@@ -17,6 +17,7 @@ from src.analysis.efficiency import (calculate_pace_factors,
                                      calculate_team_efficiency)
 from src.collectors.basketball_reference import (get_player_season_stats,
                                                  get_season_stats)
+from src.collectors.lineups_scraper import LineupsCollector
 from src.collectors.nba_api import (get_player_advanced_stats,
                                     get_team_advanced_stats)
 from src.collectors.odds_api import OddsAPICollector
@@ -46,7 +47,7 @@ def convert_odds_to_dataframe(odds_data: Dict) -> pd.DataFrame:
     Convert odds API response to a pandas DataFrame.
     
     Args:
-        odds_data: Dictionary containing odds data from the API
+        odds_data: Dictionary or List containing odds data from the API
         
     Returns:
         DataFrame with standardized odds data
@@ -54,17 +55,21 @@ def convert_odds_to_dataframe(odds_data: Dict) -> pd.DataFrame:
     # Extract relevant fields from the odds data
     records: List[Dict] = []
     
-    for game in odds_data.get('games', []):
-        record = {
-            'game_id': game.get('id'),
-            'home_team': game.get('home_team'),
-            'away_team': game.get('away_team'),
-            'home_odds': game.get('home_odds'),
-            'away_odds': game.get('away_odds'),
-            'spread': game.get('spread'),
-            'total': game.get('total')
-        }
-        records.append(record)
+    # Handle both dictionary and list responses
+    games = odds_data.get('games', []) if isinstance(odds_data, dict) else odds_data
+    
+    for game in games:
+        if isinstance(game, dict):
+            record = {
+                'game_id': game.get('id'),
+                'home_team': game.get('home_team'),
+                'away_team': game.get('away_team'),
+                'home_odds': game.get('home_odds'),
+                'away_odds': game.get('away_odds'),
+                'spread': game.get('spread'),
+                'total': game.get('total')
+            }
+            records.append(record)
     
     return pd.DataFrame(records)
 
@@ -81,6 +86,7 @@ async def main():
     
     # Initialize collectors
     odds_collector = OddsAPICollector(odds_api_key)
+    lineups_collector = LineupsCollector()
     
     try:
         # Collect data
@@ -93,6 +99,17 @@ async def main():
         nba_team_stats = get_team_advanced_stats()
         nba_player_stats = get_player_advanced_stats()
         odds_data = await odds_collector.get_nba_odds()
+        
+        # Collect lineup data
+        print("\nCollecting lineup data...")
+        matchups = lineups_collector.get_matchups()
+        projections = lineups_collector.get_projections()
+        team_rankings = lineups_collector.get_team_rankings()
+        depth_charts = lineups_collector.get_depth_charts()
+        starting_lineups = lineups_collector.get_starting_lineups()
+        team_stats_today = lineups_collector.get_team_stats()
+        player_stats_today = lineups_collector.get_player_stats()
+        injuries = lineups_collector.get_injuries()
         
         # Debug: Print column names
         print("\nBasketball Reference Team Stats columns:")
@@ -107,7 +124,7 @@ async def main():
         team_stats = pd.merge(
             bref_team_stats,
             nba_team_stats,
-            left_on='home_team',  # Changed from 'team' to 'home_team' since that's what Basketball Reference provides
+            left_on='home_team',
             right_on='TEAM_NAME',
             how='outer'
         )
@@ -120,8 +137,8 @@ async def main():
         player_stats = pd.merge(
             bref_player_stats,
             nba_player_stats,
-            left_on=['name', 'team'],  # Using renamed columns
-            right_on=['name', 'team'],  # Using renamed columns
+            left_on=['name', 'team'],
+            right_on=['name', 'team'],
             how='outer'
         )
         
@@ -132,6 +149,40 @@ async def main():
             player_stats=player_stats,
             odds_data=odds_df
         )
+        
+        # Process depth charts into a DataFrame
+        depth_chart_data = []
+        for team, positions in depth_charts.items():
+            for position, players in positions.items():
+                for depth_level, player in enumerate(players, 1):
+                    depth_chart_data.append({
+                        'team': team,
+                        'position': position,
+                        'depth_level': depth_level,
+                        'player': player
+                    })
+        
+        # Process starting lineups into a DataFrame
+        lineup_data = []
+        for team, players in starting_lineups.items():
+            for position, player in enumerate(players):
+                lineup_data.append({
+                    'team': team,
+                    'position': f'Position {position + 1}',
+                    'player': player
+                })
+        
+        # Add lineup data to cleaned_data
+        cleaned_data.update({
+            'matchups': pd.DataFrame(matchups),
+            'projections': pd.DataFrame(projections),
+            'team_rankings': pd.DataFrame(team_rankings),
+            'depth_charts': pd.DataFrame(depth_chart_data),
+            'starting_lineups': pd.DataFrame(lineup_data),
+            'team_stats_today': pd.DataFrame(team_stats_today),
+            'player_stats_today': pd.DataFrame(player_stats_today),
+            'injuries': pd.DataFrame(injuries)
+        })
         
         # Debug: Print cleaned columns
         print("\nCleaned Team Stats columns:")
@@ -150,7 +201,13 @@ async def main():
             "player_stats": cleaned_data['player_stats'],
             "team_efficiency": team_efficiency,
             "player_efficiency": player_efficiency,
-            "pace_factors": pace_factors
+            "pace_factors": pace_factors,
+            "matchups": cleaned_data['matchups'],
+            "projections": cleaned_data['projections'],
+            "team_rankings": cleaned_data['team_rankings'],
+            "starting_lineups": cleaned_data['starting_lineups'],
+            "depth_charts": cleaned_data['depth_charts'],
+            "injuries": cleaned_data['injuries']
         }
         
         if 'odds_data' in cleaned_data:
@@ -178,6 +235,9 @@ async def main():
     except Exception as e:
         print(f"Error: {str(e)}")
         raise
+    finally:
+        if 'lineups_collector' in locals():
+            del lineups_collector  # Ensure the browser is closed
 
 if __name__ == "__main__":
     asyncio.run(main()) 

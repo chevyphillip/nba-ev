@@ -1,142 +1,241 @@
-## NBA Statistics Data Pipeline
+# NBA-EV Data Pipeline
 
-### Data Collection
+## Overview
 
-The pipeline collects data from two primary sources:
+The NBA-EV data pipeline is a comprehensive system for collecting, processing, and analyzing NBA statistics. The pipeline runs daily to gather the latest data and generate insights through the following stages:
 
-1. **Basketball Reference**
-   - Columns collected:
-     - `start_time`: Game start time
-     - `away_team`: Away team name
-     - `home_team`: Home team name
-     - `away_team_score`: Away team score
-     - `home_team_score`: Home team score
+## Pipeline Stages
 
-2. **NBA API**
-   - Key columns collected:
-     - `TEAM_ID`: Unique team identifier
-     - `TEAM_NAME`: Team name
-     - `GP`: Games played
-     - `W`: Wins
-     - `L`: Losses
-     - `W_PCT`: Win percentage
-     - `OFF_RATING`: Offensive rating
-     - `DEF_RATING`: Defensive rating
-     - `NET_RATING`: Net rating
-     - `AST_PCT`: Assist percentage
-     - `PACE`: Team pace
-     - And various other advanced metrics
+### 1. Data Collection
 
-### Data Cleaning Process
+Multiple data sources are integrated through specialized collectors:
 
-#### Team Statistics Cleaning
+```mermaid
+graph LR
+    A[NBA API] --> E[Data Collection]
+    B[Basketball Reference] --> E
+    C[Rotowire Lineups] --> E
+    D[Odds API] --> E
+    E --> F[Raw Data]
+```
 
-1. **Column Standardization**
-   NBA API columns are mapped to standardized names:
+#### Collectors
 
+1. **NBA API Collector** (`src/collectors/nba_api.py`):
+   - Team advanced statistics
+   - Player advanced statistics
+   - League standings
+
+2. **Basketball Reference Collector** (`src/collectors/basketball_reference.py`):
+   - Season statistics
+   - Player career data
+   - Historical game logs
+
+3. **Lineups Collector** (`src/collectors/lineups_scraper.py`):
+   - Current matchups
+   - Team lineups
+   - Injury reports
+   - Depth charts
+
+4. **Odds API Collector** (`src/collectors/odds_api.py`):
+   - Game odds
+   - Betting lines
+   - Market movements
+
+### 2. Data Processing
+
+Raw data undergoes several processing steps:
+
+```mermaid
+graph TD
+    A[Raw Data] --> B[Data Cleaning]
+    B --> C[Data Transformation]
+    C --> D[Data Validation]
+    D --> E[Processed Data]
+```
+
+#### Processing Steps
+
+1. **Data Cleaning** (`src/analysis/data_cleaning.py`):
+   - Standardize team names
+   - Handle missing values
+   - Remove duplicates
+   - Format data types
+
+2. **Data Transformation**:
+   - Calculate advanced metrics
+   - Normalize statistics
+   - Create derived features
+   - Merge related datasets
+
+3. **Data Validation**:
+   - Check data completeness
+   - Validate statistical ranges
+   - Ensure data consistency
+   - Log validation results
+
+### 3. Analysis
+
+Processed data is analyzed to generate insights:
+
+```mermaid
+graph TD
+    A[Processed Data] --> B[Team Analysis]
+    A --> C[Player Analysis]
+    A --> D[Matchup Analysis]
+    B --> E[Insights]
+    C --> E
+    D --> E
+```
+
+#### Analysis Modules
+
+1. **Team Analysis** (`src/analysis/efficiency.py`):
+   - Offensive/defensive ratings
+   - Pace factors
+   - Win percentages
+   - Net ratings
+
+2. **Player Analysis**:
+   - Statistical distributions
+   - Efficiency metrics
+   - Performance correlations
+   - Versatility index
+
+3. **Matchup Analysis**:
+   - Team comparisons
+   - Historical matchups
+   - Lineup impact
+
+### 4. Data Storage
+
+Data is stored in multiple formats:
+
+```mermaid
+graph TD
+    A[Processed Data] --> B[Daily Excel Snapshots]
+    A --> C[Visualization Cache]
+    A --> D[Analysis Results]
+```
+
+#### Storage Formats
+
+1. **Excel Snapshots** (`data/`):
+   - Daily data snapshots
+   - Multiple sheets per file
+   - Standardized format
+   - Version tracking
+
+2. **Visualization Data**:
+   - Pre-computed statistics
+   - Cached visualizations
+   - Interactive plot data
+
+3. **Analysis Results**:
+   - Derived metrics
+   - Statistical models
+   - Performance indicators
+
+## Pipeline Execution
+
+### Daily Update Process
+
+1. **Initialization**:
+
+   ```python
+   # Load environment variables
+   load_dotenv()
+   
+   # Initialize collectors
+   odds_collector = OddsAPICollector(api_key)
+   lineups_collector = LineupsCollector()
    ```
-   TEAM_NAME -> team
-   W -> wins
-   L -> losses
-   W_PCT -> win_pct
-   OFF_RATING -> offensive_rating
-   DEF_RATING -> defensive_rating
-   NET_RATING -> net_rating
-   EFG_PCT -> efg_pct
-   TS_PCT -> ts_pct
-   PACE -> pace
-   AST_PCT -> ast_pct
-   AST_TO -> ast_to
-   AST_RATIO -> ast_ratio
-   POSS -> possessions
+
+2. **Data Collection**:
+
+   ```python
+   # Collect data from all sources
+   bref_stats = get_season_stats(year)
+   nba_stats = get_team_advanced_stats()
+   lineups = lineups_collector.get_lineups()
+   odds = odds_collector.get_nba_odds()
    ```
 
-2. **Basketball Reference Data Processing**
-   - Home and away games are combined
-   - Game-level statistics are aggregated by team
-   - Calculated metrics include:
-     - `games_played`: Total games
-     - `points_per_game`: Average points per game
+3. **Data Processing**:
 
-3. **Data Quality Checks**
-   - Missing value handling
-   - Outlier detection and treatment
-   - Team name standardization (uppercase)
-   - Duplicate removal
-
-#### Player Statistics Cleaning
-
-1. **Column Standardization**
-
-   ```
-   PLAYER_NAME -> name
-   TEAM_ABBREVIATION -> team
-   OFF_RATING -> offensive_rating
-   DEF_RATING -> defensive_rating
-   NET_RATING -> net_rating
-   AST_PCT -> ast_pct
-   AST_TO -> ast_to
-   AST_RATIO -> ast_ratio
-   USG_PCT -> usage_pct
+   ```python
+   # Clean and prepare data
+   cleaned_data = prepare_data_for_visualization(
+       team_stats=team_stats,
+       player_stats=player_stats,
+       odds_data=odds_df
+   )
    ```
 
-2. **Data Processing**
-   - Name standardization (Title Case)
-   - Team name standardization (uppercase)
-   - Missing value imputation
-   - Per-game average calculations
+4. **Analysis**:
 
-### Visualization Data Preparation
+   ```python
+   # Calculate efficiency metrics
+   team_efficiency = calculate_team_efficiency(team_stats)
+   player_efficiency = calculate_player_efficiency(player_stats)
+   pace_factors = calculate_pace_factors(team_stats)
+   ```
 
-The following DataFrames are prepared for visualization:
+5. **Storage**:
 
-1. **Team Statistics**
-   - Core metrics: offensive/defensive ratings, pace, win percentage
-   - Scoring data from both home and away games
-   - Advanced metrics from NBA API
+   ```python
+   # Save to Excel
+   with pd.ExcelWriter(excel_path) as writer:
+       for sheet_name, df in data_to_save.items():
+           df.to_excel(writer, sheet_name=sheet_name)
+   ```
 
-2. **Pace Factors**
-   - Team pace metrics
-   - Possession-based statistics
-   - Relative pace factors
+### Error Handling
 
-3. **Efficiency Metrics**
-   - Team and player efficiency calculations
-   - Offensive and defensive efficiency
-   - Usage and impact metrics
+The pipeline includes comprehensive error handling:
 
-### Data Validation
+1. **Collection Errors**:
+   - Retry mechanisms
+   - Fallback data sources
+   - Error logging
 
-The pipeline includes several validation steps:
+2. **Processing Errors**:
+   - Data validation checks
+   - Exception handling
+   - Warning systems
 
-1. **Team Name Consistency**
-   - Checks for unknown teams in player statistics
-   - Ensures team names match between datasets
+3. **Storage Errors**:
+   - Backup procedures
+   - Transaction rollback
+   - Integrity checks
 
-2. **Statistical Consistency**
-   - Validates scoring data between team and player statistics
-   - Checks for large discrepancies in aggregated metrics
+## Monitoring and Maintenance
 
-3. **Data Type Validation**
-   - Ensures numeric columns contain valid data
-   - Handles timezone-aware datetime columns
+### Pipeline Monitoring
 
-### Output Format
+1. **Logging**:
+   - Error tracking
+   - Performance metrics
+   - Data quality checks
 
-Data is saved in Excel format with the following sheets:
+2. **Alerts**:
+   - Failed collections
+   - Data anomalies
+   - System errors
 
-1. `team_stats`: Cleaned team statistics
-2. `player_stats`: Cleaned player statistics
-3. `team_efficiency`: Calculated team efficiency metrics
-4. `player_efficiency`: Calculated player efficiency metrics
-5. `pace_factors`: Team pace and possession metrics
+### Maintenance Tasks
 
-### Visualization Outputs
+1. **Daily**:
+   - Data collection
+   - Quality checks
+   - Error resolution
 
-The pipeline generates several visualization files:
+2. **Weekly**:
+   - Performance review
+   - Storage cleanup
+   - Log rotation
 
-1. `offensive_defensive_ratings.png`: Team offensive vs defensive ratings
-2. `team_pace_factors.png`: Team pace analysis
-3. `team_win_percentages.png`: Win percentage distribution
-4. `scoring_distribution.png`: Team scoring distribution
-5. `team_net_ratings.png`: Net rating analysis
+3. **Monthly**:
+   - System updates
+   - Documentation review
+   - Performance optimization

@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from src.visualization.lineup_plots import create_lineup_visualizations
+
 
 def setup_plotting_style():
     """Configure the plotting style for consistent visualizations."""
@@ -168,6 +170,68 @@ def create_net_rating_plot(team_stats: pd.DataFrame, output_dir: str) -> None:
     plt.savefig(Path(output_dir) / 'team_net_ratings.png', dpi=300, bbox_inches='tight')
     plt.close()
 
+def create_player_distribution_plots(player_stats: pd.DataFrame, output_dir: str) -> None:
+    """
+    Create distribution plots for key player statistics.
+    
+    Args:
+        player_stats: DataFrame containing player statistics
+        output_dir: Directory to save the plot
+    """
+    # Select key statistics for distribution analysis
+    key_stats = ['ppg_x', 'apg_x', 'rpg', 'TS_PCT']
+    stat_labels = ['Points Per Game', 'Assists Per Game', 'Rebounds Per Game', 'True Shooting %']
+    
+    # Set up the figure with a larger size and better spacing
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
+    axes = axes.flatten()
+    
+    # Set style for better readability
+    plt.style.use('seaborn')
+    
+    for idx, (stat, label) in enumerate(zip(key_stats, stat_labels)):
+        # Filter out players with minimal playing time
+        min_minutes = 10
+        filtered_stats = player_stats[player_stats['mpg_x'] >= min_minutes].copy()
+        
+        # Create violin plot with improved styling
+        sns.violinplot(y=filtered_stats[stat], ax=axes[idx], color='lightblue', alpha=0.6)
+        
+        # Add individual points for top players
+        threshold = filtered_stats[stat].quantile(0.9)
+        top_players = filtered_stats[filtered_stats[stat] >= threshold]
+        
+        # Sort top players by stat value for better labeling
+        top_players = top_players.nlargest(10, stat)
+        
+        axes[idx].scatter(
+            x=np.zeros_like(top_players[stat]),
+            y=top_players[stat],
+            color='red',
+            alpha=0.8,
+            s=100
+        )
+        
+        # Add labels for top players with better positioning
+        for _, player in top_players.iterrows():
+            axes[idx].annotate(
+                player['name'],
+                xy=(0, player[stat]),
+                xytext=(10, 0),
+                textcoords='offset points',
+                fontsize=10,
+                alpha=0.8,
+                bbox=dict(facecolor='white', edgecolor='none', alpha=0.7)
+            )
+        
+        axes[idx].set_title(f'Distribution of {label}', fontsize=14, pad=20)
+        axes[idx].grid(True, alpha=0.3)
+        axes[idx].set_ylabel(label, fontsize=12)
+    
+    plt.tight_layout(pad=3.0)
+    plt.savefig(Path(output_dir) / 'player_stat_distributions.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
 def create_player_scoring_efficiency(player_stats: pd.DataFrame, output_dir: str) -> None:
     """
     Create scatter plot of points per game vs true shooting percentage.
@@ -176,39 +240,53 @@ def create_player_scoring_efficiency(player_stats: pd.DataFrame, output_dir: str
         player_stats: DataFrame containing player statistics
         output_dir: Directory to save the plot
     """
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(15, 10))
     
     # Filter for players with minimum minutes played
-    min_minutes = 15  # Minimum minutes per game
+    min_minutes = 15
     qualified_players = player_stats[player_stats['mpg_x'] >= min_minutes].copy()
     
-    # Create scatter plot
-    plt.scatter(qualified_players['ppg_x'], qualified_players['TS_PCT'], alpha=0.6)
+    # Create scatter plot with better styling
+    plt.scatter(
+        qualified_players['ppg_x'],
+        qualified_players['TS_PCT'],
+        alpha=0.6,
+        s=100,
+        c=qualified_players['mpg_x'],
+        cmap='viridis'
+    )
     
-    # Add labels for top scorers and notably efficient players
+    # Add colorbar for minutes played
+    plt.colorbar(label='Minutes Per Game')
+    
+    # Label top scorers and efficient players
     top_scorers = qualified_players.nlargest(10, 'ppg_x')
     efficient_scorers = qualified_players[
         (qualified_players['ppg_x'] >= 15) & 
         (qualified_players['TS_PCT'] >= qualified_players['TS_PCT'].quantile(0.9))
     ]
     
-    # Combine and remove duplicates based on specific columns
-    players_to_label = pd.concat([top_scorers, efficient_scorers])
-    players_to_label = players_to_label.drop_duplicates(subset=['name', 'ppg_x', 'TS_PCT'])
+    players_to_label = pd.concat([top_scorers, efficient_scorers]).drop_duplicates()
     
     for _, player in players_to_label.iterrows():
-        plt.annotate(player['name'], 
-                    (player['ppg_x'], player['TS_PCT']),
-                    xytext=(5, 5), textcoords='offset points')
+        plt.annotate(
+            player['name'],
+            (player['ppg_x'], player['TS_PCT']),
+            xytext=(5, 5),
+            textcoords='offset points',
+            fontsize=10,
+            bbox=dict(facecolor='white', edgecolor='none', alpha=0.7)
+        )
     
-    plt.xlabel('Points Per Game')
-    plt.ylabel('True Shooting Percentage')
-    plt.title('Scoring Efficiency by Player')
+    plt.xlabel('Points Per Game', fontsize=12)
+    plt.ylabel('True Shooting Percentage', fontsize=12)
+    plt.title('Scoring Efficiency by Player', fontsize=14, pad=20)
     
     # Add quadrant lines at median values
     plt.axvline(qualified_players['ppg_x'].median(), color='gray', linestyle='--', alpha=0.3)
     plt.axhline(qualified_players['TS_PCT'].median(), color='gray', linestyle='--', alpha=0.3)
     
+    plt.grid(True, alpha=0.3)
     plt.savefig(Path(output_dir) / 'player_scoring_efficiency.png', dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -220,31 +298,41 @@ def create_player_contribution_heatmap(player_stats: pd.DataFrame, output_dir: s
         player_stats: DataFrame containing player statistics
         output_dir: Directory to save the plot
     """
-    plt.figure(figsize=(12, 10))
+    plt.figure(figsize=(15, 12))
     
-    # Select relevant columns for correlation
+    # Select relevant columns and create readable labels
     stat_columns = [
-        'ppg_x', 'apg_x', 'rpg', 'spg_x', 'bpg_x', 'tpg_x', 
+        'ppg_x', 'apg_x', 'rpg', 'spg_x', 'bpg_x', 'tpg_x',
         'mpg_x', 'fg%', '3p%_x', 'ft%_x', 'TS_PCT', 'usg%'
     ]
     
-    # Create readable labels for the heatmap
     stat_labels = [
         'Points', 'Assists', 'Rebounds', 'Steals', 'Blocks', 'Turnovers',
         'Minutes', 'FG%', '3P%', 'FT%', 'TS%', 'Usage%'
     ]
     
-    # Calculate correlation matrix
+    # Calculate correlation matrix for selected columns
     corr_matrix = player_stats[stat_columns].corr()
     
-    # Create heatmap
-    sns.heatmap(corr_matrix, annot=True, cmap='RdBu', center=0, fmt='.2f',
-                square=True, cbar_kws={'label': 'Correlation Coefficient'},
-                xticklabels=stat_labels, yticklabels=stat_labels)
+    # Create heatmap with improved styling
+    sns.heatmap(
+        corr_matrix,
+        annot=True,
+        cmap='RdBu',
+        center=0,
+        fmt='.2f',
+        square=True,
+        cbar_kws={'label': 'Correlation Coefficient'},
+        xticklabels=stat_labels,
+        yticklabels=stat_labels,
+        annot_kws={'size': 8}
+    )
     
-    plt.title('Correlation of Player Statistics')
+    plt.title('Correlation of Player Statistics', fontsize=14, pad=20)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    
     plt.tight_layout()
-    
     plt.savefig(Path(output_dir) / 'player_correlation_heatmap.png', dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -319,75 +407,135 @@ def create_player_versatility_plot(player_stats: pd.DataFrame, output_dir: str) 
     plt.savefig(Path(output_dir) / 'player_versatility_radar.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-def create_player_distribution_plots(player_stats: pd.DataFrame, output_dir: str) -> None:
+def create_team_visualizations(data: dict, save_dir: str) -> None:
     """
-    Create distribution plots for key player statistics.
+    Create team-related visualizations.
     
     Args:
-        player_stats: DataFrame containing player statistics
-        output_dir: Directory to save the plot
+        data: Dictionary containing NBA data
+        save_dir: Directory to save visualizations
     """
-    # Select key statistics for distribution analysis
-    key_stats = ['ppg_x', 'apg_x', 'rpg', 'TS_PCT']
-    stat_labels = ['Points Per Game', 'Assists Per Game', 'Rebounds Per Game', 'True Shooting %']
+    # Create save directory if it doesn't exist
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
     
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-    axes = axes.flatten()
-    
-    for idx, (stat, label) in enumerate(zip(key_stats, stat_labels)):
-        # Create violin plot
-        sns.violinplot(y=player_stats[stat], ax=axes[idx])
-        
-        # Add individual points for players above 90th percentile
-        threshold = player_stats[stat].quantile(0.9)
-        top_players = player_stats[player_stats[stat] >= threshold]
-        
-        axes[idx].scatter(
-            x=np.zeros_like(top_players[stat]),
-            y=top_players[stat],
-            color='red',
-            alpha=0.6
+    if 'team_stats' in data:
+        # Team Net Ratings
+        plt.figure(figsize=(12, 8))
+        sns.scatterplot(
+            data=data['team_stats'],
+            x='offensive_rating',
+            y='defensive_rating',
+            hue='win_pct'
         )
+        plt.title('Team Net Ratings')
+        plt.xlabel('Offensive Rating')
+        plt.ylabel('Defensive Rating')
+        plt.savefig(Path(save_dir) / 'team_net_ratings.png')
+        plt.close()
         
-        # Add labels for top players
-        for _, player in top_players.iterrows():
-            axes[idx].annotate(
-                player['name'],
-                xy=(0, player[stat]),
-                xytext=(10, 0),
-                textcoords='offset points',
-                fontsize=8
-            )
-        
-        axes[idx].set_title(f'Distribution of {label}')
-    
-    plt.tight_layout()
-    plt.savefig(Path(output_dir) / 'player_stat_distributions.png', dpi=300, bbox_inches='tight')
-    plt.close()
+        # Win Percentages
+        plt.figure(figsize=(15, 8))
+        data['team_stats'].sort_values('win_pct', ascending=False)['win_pct'].plot(kind='bar')
+        plt.title('Team Win Percentages')
+        plt.xlabel('Team')
+        plt.ylabel('Win Percentage')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.savefig(Path(save_dir) / 'team_win_percentages.png')
+        plt.close()
 
-def create_all_visualizations(data: dict, output_dir: str) -> None:
+def create_player_visualizations(data: dict, save_dir: str) -> None:
     """
-    Create all visualizations from the NBA statistics data.
+    Create player-related visualizations.
     
     Args:
-        data: Dictionary containing DataFrames with NBA statistics
-        output_dir: Directory to save the plots
+        data: Dictionary containing NBA data
+        save_dir: Directory to save visualizations
     """
-    # Create output directory if it doesn't exist
-    Path(output_dir).mkdir(exist_ok=True)
+    # Create save directory if it doesn't exist
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
     
-    # Set up plotting style
-    setup_plotting_style()
+    if 'player_stats' in data:
+        # Scoring Distribution
+        plt.figure(figsize=(10, 6))
+        sns.histplot(data=data['player_stats'], x='ppg_x', bins=30)
+        plt.title('Scoring Distribution')
+        plt.xlabel('Points Per Game')
+        plt.ylabel('Count')
+        plt.savefig(Path(save_dir) / 'scoring_distribution.png')
+        plt.close()
+        
+        # Player Correlation Heatmap
+        plt.figure(figsize=(12, 10))
+        numeric_cols = data['player_stats'].select_dtypes(include=['float64', 'int64']).columns
+        sns.heatmap(
+            data['player_stats'][numeric_cols].corr(),
+            annot=True,
+            cmap='coolwarm',
+            center=0
+        )
+        plt.title('Player Statistics Correlation Heatmap')
+        plt.tight_layout()
+        plt.savefig(Path(save_dir) / 'player_correlation_heatmap.png')
+        plt.close()
+
+def create_efficiency_visualizations(data: dict, save_dir: str) -> None:
+    """
+    Create efficiency-related visualizations.
     
-    # Create team visualizations
-    create_offensive_defensive_plot(data['team_stats'], output_dir)
-    create_pace_analysis(data['pace_factors'], output_dir)
-    create_win_percentage_plot(data['team_stats'], output_dir)
-    create_scoring_distribution(data['team_stats'], output_dir)
-    create_net_rating_plot(data['team_stats'], output_dir)
+    Args:
+        data: Dictionary containing NBA data
+        save_dir: Directory to save visualizations
+    """
+    # Create save directory if it doesn't exist
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
     
-    # Create player visualizations
-    create_player_scoring_efficiency(data['player_stats'], output_dir)
-    create_player_contribution_heatmap(data['player_stats'], output_dir)
-    create_player_versatility_plot(data['player_stats'], output_dir)
-    create_player_distribution_plots(data['player_stats'], output_dir) 
+    if 'team_efficiency' in data:
+        # Offensive vs Defensive Ratings
+        plt.figure(figsize=(12, 8))
+        sns.scatterplot(
+            data=data['team_efficiency'],
+            x='offensive_rating',
+            y='defensive_rating',
+            hue='win_pct'
+        )
+        plt.title('Team Efficiency: Offense vs Defense')
+        plt.xlabel('Offensive Rating')
+        plt.ylabel('Defensive Rating')
+        plt.savefig(Path(save_dir) / 'offensive_defensive_ratings.png')
+        plt.close()
+    
+    if 'pace_factors' in data:
+        # Team Pace Factors
+        plt.figure(figsize=(15, 8))
+        if 'relative_pace' in data['pace_factors'].columns:
+            data['pace_factors'].sort_values('relative_pace', ascending=False)['relative_pace'].plot(kind='bar')
+            ylabel = 'Relative Pace (%)'
+        else:
+            data['pace_factors'].sort_values('pace', ascending=False)['pace'].plot(kind='bar')
+            ylabel = 'Pace'
+            
+        plt.title('Team Pace Factors')
+        plt.xlabel('Team')
+        plt.ylabel(ylabel)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.savefig(Path(save_dir) / 'team_pace_factors.png')
+        plt.close()
+
+def create_all_visualizations(data: dict, save_dir: str) -> None:
+    """
+    Create all visualizations.
+    
+    Args:
+        data: Dictionary containing all NBA data
+        save_dir: Directory to save visualizations
+    """
+    # Create save directory if it doesn't exist
+    Path(save_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Create visualizations by category
+    create_team_visualizations(data, save_dir)
+    create_player_visualizations(data, save_dir)
+    create_efficiency_visualizations(data, save_dir)
+    create_lineup_visualizations(data, save_dir) 

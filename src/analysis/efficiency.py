@@ -60,68 +60,44 @@ def calculate_team_efficiency(team_stats: pd.DataFrame) -> pd.DataFrame:
 
 def calculate_player_efficiency(player_stats: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate comprehensive player efficiency metrics.
+    Calculate player efficiency metrics.
     
     Args:
         player_stats: DataFrame containing player statistics
         
     Returns:
-        DataFrame with calculated efficiency metrics
+        DataFrame with efficiency metrics added
     """
     efficiency = player_stats.copy()
     
-    # Per 36 Minutes Stats
-    if 'mpg_x' in efficiency.columns:
-        stats_per_36 = [
-            'ppg_x', 'apg_x', 'rpg', 'spg_x', 'bpg_x', 'tpg_x'
-        ]
-        for stat in stats_per_36:
-            if stat in efficiency.columns:
-                efficiency[f'{stat}_per_36'] = efficiency[stat] * (36 / efficiency['mpg_x'])
-    
-    # Usage Rate Tiers
+    # Calculate efficiency metrics
     if 'usg%' in efficiency.columns:
-        efficiency['usage_tier'] = pd.qcut(
-            efficiency['usg%'], 
-            q=5, 
-            labels=['Very Low', 'Low', 'Medium', 'High', 'Very High']
-        )
+        try:
+            # Try to create usage tiers, handling edge cases
+            efficiency['usage_tier'] = pd.qcut(
+                efficiency['usg%'].fillna(efficiency['usg%'].mean()),
+                q=5,
+                labels=['Very Low', 'Low', 'Medium', 'High', 'Very High']
+            )
+        except ValueError:
+            # If qcut fails, use simple thresholds
+            efficiency['usage_tier'] = pd.cut(
+                efficiency['usg%'].fillna(efficiency['usg%'].mean()),
+                bins=5,
+                labels=['Very Low', 'Low', 'Medium', 'High', 'Very High']
+            )
     
-    # Scoring Efficiency
-    if all(col in efficiency.columns for col in ['ppg_x', 'fga', 'fta']):
-        # Points per Shot Attempt
-        efficiency['points_per_shot'] = efficiency['ppg_x'] / (efficiency['fga'] + 0.44 * efficiency['fta'])
-        
-        # True Shooting Attempts
-        efficiency['true_shooting_attempts'] = efficiency['fga'] + 0.44 * efficiency['fta']
+    # Calculate other efficiency metrics
+    if all(col in efficiency.columns for col in ['ppg_x', 'mpg_x']):
+        efficiency['points_per_minute'] = efficiency['ppg_x'] / efficiency['mpg_x'].replace(0, 1)
     
-    # Creation Metrics
     if all(col in efficiency.columns for col in ['apg_x', 'tpg_x']):
-        # Assist to Turnover Ratio
-        efficiency['ast_to_ratio'] = efficiency['apg_x'] / efficiency['tpg_x'].replace(0, 1)
-        
-        # Playmaking Score
-        efficiency['playmaking_score'] = (
-            efficiency['apg_x'] * 2.0 - 
-            efficiency['tpg_x'] * 1.5
-        )
+        efficiency['assist_to_turnover'] = efficiency['apg_x'] / efficiency['tpg_x'].replace(0, 1)
     
-    # Versatility Score
-    key_stats = ['ppg_x', 'rpg', 'apg_x', 'spg_x', 'bpg_x']
-    if all(stat in efficiency.columns for stat in key_stats):
-        # Normalize each stat
-        normalized_stats = {}
-        for stat in key_stats:
-            normalized_stats[stat] = (
-                efficiency[stat] - efficiency[stat].min()
-            ) / (efficiency[stat].max() - efficiency[stat].min())
-        
-        # Calculate versatility score
-        efficiency['versatility_score'] = sum(normalized_stats.values()) / len(normalized_stats)
-    
-    # Floor Spacing
-    if all(col in efficiency.columns for col in ['3p%_x', '3pa']):
-        efficiency['spacing_impact'] = efficiency['3p%_x'] * efficiency['3pa']
+    if 'fg%' in efficiency.columns and 'ft%_x' in efficiency.columns:
+        efficiency['scoring_efficiency'] = (
+            efficiency['fg%'].fillna(0) + efficiency['ft%_x'].fillna(0)
+        ) / 2
     
     return efficiency
 

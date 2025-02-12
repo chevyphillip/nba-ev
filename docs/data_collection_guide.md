@@ -1,232 +1,290 @@
-# NBA Data Collection Guide
+# NBA-EV Data Collection Guide
 
-This guide provides detailed information about the data collection process in the NBA Expected Value Analysis project.
+## Overview
+
+This guide documents the data collection process for the NBA-EV project, including data sources, collection methods, and best practices for maintaining data quality.
 
 ## Data Sources
 
-### 1. Rotowire Lineup Information
+### 1. NBA API (`src/collectors/nba_api.py`)
 
-The `NBALineupScraper` class in `lineups_scraper.py` collects real-time lineup information:
-
-```python
-from src.collectors.lineups_scraper import NBALineupScraper
-
-# Initialize scraper
-scraper = NBALineupScraper()
-
-# Get current lineups
-lineups_df = scraper.get_lineups()
-```
-
-#### Data Points Collected
-
-- Team names and abbreviations
-- Player names
-- Player positions
-- Player status (Active, GTD, OUT)
-- Game time and date
-- Venue information
-
-### 2. Basketball Reference Statistics
-
-The `BasketballReferenceCollector` in `basketball_reference.py` gathers historical statistics:
+The NBA API provides official statistics and advanced metrics.
 
 ```python
-from src.collectors.basketball_reference import BasketballReferenceCollector
+from nba_api.stats.endpoints import leaguedashteamstats, leaguedashplayerstats
 
-# Initialize collector
-collector = BasketballReferenceCollector()
+def get_team_advanced_stats():
+    """Collect team advanced statistics from NBA API."""
+    response = leaguedashteamstats.LeagueDashTeamStats(
+        measure_type_detailed_defense='Advanced',
+        per_mode_detailed='PerGame',
+        season='2023-24'
+    )
+    return pd.DataFrame(response.get_data_frames()[0])
 
-# Get season statistics
-season_stats = collector.get_season_stats(season="2023-24")
-
-# Get player statistics
-player_stats = collector.get_player_season_stats(player_name="Player Name")
+def get_player_advanced_stats():
+    """Collect player advanced statistics from NBA API."""
+    response = leaguedashplayerstats.LeagueDashPlayerStats(
+        measure_type_detailed_defense='Advanced',
+        per_mode_detailed='PerGame',
+        season='2023-24'
+    )
+    return pd.DataFrame(response.get_data_frames()[0])
 ```
 
-#### Available Statistics
+### 2. Basketball Reference (`src/collectors/basketball_reference.py`)
 
-- Season averages
-- Player career statistics
-- Team historical data
-- Advanced metrics
-
-### 3. NBA API Integration
-
-The `NBAAPICollector` in `nba_api.py` provides access to official NBA statistics:
+Basketball Reference provides historical statistics and game logs.
 
 ```python
-from src.collectors.nba_api import NBAAPICollector
+from basketball_reference_web_scraper import client
 
-# Initialize collector
-nba_collector = NBAAPICollector()
+def get_season_stats(season_year: int):
+    """Collect season statistics from Basketball Reference."""
+    return pd.DataFrame(client.season_schedule(season=season_year))
 
-# Get advanced team statistics
-team_stats = nba_collector.get_team_advanced_stats()
-
-# Get player advanced statistics
-player_stats = nba_collector.get_player_advanced_stats()
+def get_player_season_stats(season_year: int):
+    """Collect player statistics from Basketball Reference."""
+    return pd.DataFrame(client.players_season_totals(season_end_year=season_year))
 ```
 
-#### Available Data
+### 3. Rotowire Lineups (`src/collectors/lineups_scraper.py`)
 
-- Advanced team metrics
-- Player performance statistics
-- Real-time game data
-- Historical game logs
-
-### 4. Odds API Integration
-
-The `OddsAPICollector` in `odds_api.py` collects betting market data:
+Real-time lineup and injury information from Rotowire.
 
 ```python
-from src.collectors.odds_api import OddsAPICollector
-import os
-
-# Initialize collector with API key
-collector = OddsAPICollector(api_key=os.getenv("ODDS_API_KEY"))
-
-# Get current NBA odds
-odds_data = collector.get_nba_odds()
+class LineupsCollector:
+    """Collector for NBA lineup data from Rotowire."""
+    
+    def get_lineups(self):
+        """Get current NBA lineups for all games."""
+        return self._scrape_lineups()
+    
+    def get_injuries(self):
+        """Get current NBA injury reports."""
+        return self._scrape_injuries()
+    
+    def get_depth_charts(self):
+        """Get NBA team depth charts."""
+        return self._scrape_depth_charts()
 ```
 
-#### Market Data Available
+### 4. Odds API (`src/collectors/odds_api.py`)
 
-- Moneyline odds
-- Point spreads
-- Game totals
-- Live betting lines
+Game odds and betting information.
 
-## Data Collection Pipeline
+```python
+class OddsAPICollector:
+    """Collector for NBA odds data."""
+    
+    def get_nba_odds(self):
+        """Get current NBA game odds."""
+        return self._fetch_odds()
+```
 
-### 1. Setup and Configuration
+## Collection Process
 
-1. Environment Setup:
+### 1. Authentication
 
-   ```bash
-   # Create .env file
-   touch .env
-   
-   # Add required API keys
-   echo "ODDS_API_KEY=your_api_key_here" >> .env
-   ```
+```python
+# Load environment variables
+load_dotenv()
 
-2. Dependencies:
+# Initialize collectors with API keys
+odds_api_key = os.getenv("ODDS_API_KEY")
+odds_collector = OddsAPICollector(odds_api_key)
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. Data Collection
 
-### 2. Data Collection Process
+```python
+async def collect_data():
+    """Collect data from all sources."""
+    # NBA API data
+    team_stats = get_team_advanced_stats()
+    player_stats = get_player_advanced_stats()
+    
+    # Basketball Reference data
+    season_stats = get_season_stats(2024)
+    player_season_stats = get_player_season_stats(2024)
+    
+    # Rotowire data
+    lineups_collector = LineupsCollector()
+    lineups = lineups_collector.get_lineups()
+    injuries = lineups_collector.get_injuries()
+    depth_charts = lineups_collector.get_depth_charts()
+    
+    # Odds data
+    odds = await odds_collector.get_nba_odds()
+    
+    return {
+        'team_stats': team_stats,
+        'player_stats': player_stats,
+        'season_stats': season_stats,
+        'player_season_stats': player_season_stats,
+        'lineups': lineups,
+        'injuries': injuries,
+        'depth_charts': depth_charts,
+        'odds': odds
+    }
+```
 
-1. Initialize Collectors:
+## Error Handling
 
-   ```python
-   from src.collectors import (
-       NBALineupScraper,
-       BasketballReferenceCollector,
-       NBAAPICollector,
-       OddsAPICollector
-   )
-   
-   # Initialize all collectors
-   lineup_scraper = NBALineupScraper()
-   bref_collector = BasketballReferenceCollector()
-   nba_collector = NBAAPICollector()
-   odds_collector = OddsAPICollector()
-   ```
+### 1. API Rate Limits
 
-2. Collect Data:
+```python
+def handle_rate_limit(func):
+    """Decorator for handling API rate limits."""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return await func(*args, **kwargs)
+            except RateLimitError:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    raise
+    return wrapper
+```
 
-   ```python
-   # Get current lineups
-   lineups = lineup_scraper.get_lineups()
-   
-   # Get season statistics
-   season_stats = bref_collector.get_season_stats()
-   
-   # Get advanced metrics
-   advanced_stats = nba_collector.get_team_advanced_stats()
-   
-   # Get betting odds
-   odds = odds_collector.get_nba_odds()
-   ```
+### 2. Connection Errors
+
+```python
+def handle_connection_errors(func):
+    """Decorator for handling connection errors."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Connection error: {e}")
+            return None
+    return wrapper
+```
 
 ### 3. Data Validation
 
-The collection process includes built-in validation:
+```python
+def validate_data(data: dict) -> bool:
+    """Validate collected data."""
+    required_columns = {
+        'team_stats': ['team', 'wins', 'losses', 'offensive_rating'],
+        'player_stats': ['name', 'team', 'ppg_x', 'mpg_x'],
+        'lineups': ['home_team', 'away_team', 'date'],
+        'odds': ['home_team', 'away_team', 'odds']
+    }
+    
+    for key, columns in required_columns.items():
+        if key not in data or not all(col in data[key].columns for col in columns):
+            return False
+    return True
+```
 
-- Data type checking
-- Missing value detection
-- Duplicate entry removal
-- Format standardization
+## Data Quality Checks
 
-### 4. Error Handling
-
-The collectors implement robust error handling:
+### 1. Completeness Check
 
 ```python
-try:
-    lineups = scraper.get_lineups()
-except Exception as e:
-    logger.error(f"Error collecting lineup data: {e}")
-    # Implement fallback or retry logic
+def check_data_completeness(data: dict) -> bool:
+    """Check if all required data is present."""
+    return all(
+        not df.empty
+        for df in data.values()
+        if isinstance(df, pd.DataFrame)
+    )
+```
+
+### 2. Consistency Check
+
+```python
+def check_data_consistency(data: dict) -> bool:
+    """Check for data consistency across sources."""
+    team_names = set(data['team_stats']['team'])
+    return all(
+        team in team_names
+        for df in [data['lineups'], data['odds']]
+        for team in df[['home_team', 'away_team']].values.flatten()
+    )
 ```
 
 ## Best Practices
 
-1. **Rate Limiting**
-   - Respect API rate limits
-   - Implement appropriate delays between requests
-   - Cache responses when possible
+### 1. Data Collection
 
-2. **Data Freshness**
-   - Check data timestamps
-   - Implement update frequency rules
-   - Archive historical data
+- Use asynchronous operations for API calls
+- Implement proper rate limiting
+- Handle errors gracefully
+- Validate data immediately after collection
 
-3. **Resource Management**
-   - Close connections properly
-   - Release system resources
-   - Manage memory usage
+### 2. Data Storage
 
-4. **Monitoring**
-   - Log collection activities
-   - Track success/failure rates
-   - Monitor data quality
+- Store raw data before processing
+- Use consistent date formats
+- Maintain data versioning
+- Implement backup procedures
 
-## Troubleshooting
+### 3. Monitoring
 
-Common issues and solutions:
+- Log all collection activities
+- Track API usage and limits
+- Monitor data quality metrics
+- Alert on collection failures
 
-1. **Connection Errors**
-   - Check internet connectivity
-   - Verify API keys
-   - Ensure proper proxy configuration
+### 4. Maintenance
 
-2. **Data Quality Issues**
-   - Validate input data
-   - Check for schema changes
-   - Verify data transformations
+- Update API credentials regularly
+- Review and update rate limits
+- Monitor for API changes
+- Update data schemas as needed
 
-3. **Performance Problems**
-   - Optimize request patterns
-   - Implement caching
-   - Use appropriate timeouts
+## Configuration
 
-## Future Improvements
+### 1. Environment Variables
 
-1. **Scalability**
-   - Implement async data collection
-   - Add database integration
-   - Optimize resource usage
+```bash
+# .env file
+ODDS_API_KEY=your_api_key
+NBA_API_KEY=your_api_key
+PROXY_URL=your_proxy_url
+```
 
-2. **Features**
-   - Add more data sources
-   - Implement real-time updates
-   - Enhance error recovery
+### 2. Collection Settings
 
-3. **Integration**
-   - Add API endpoints
-   - Implement webhooks
-   - Create monitoring dashboard
+```python
+# settings.py
+COLLECTION_SETTINGS = {
+    'max_retries': 3,
+    'retry_delay': 2,
+    'timeout': 30,
+    'batch_size': 100
+}
+```
+
+## Future Enhancements
+
+1. **Additional Data Sources**:
+   - Player tracking data
+   - Social media sentiment
+   - Injury history database
+   - Advanced analytics providers
+
+2. **Collection Improvements**:
+   - Parallel data collection
+   - Incremental updates
+   - Real-time streaming
+   - Historical data backfilling
+
+3. **Quality Improvements**:
+   - Machine learning validation
+   - Automated anomaly detection
+   - Data quality scoring
+   - Source reliability tracking
+
+4. **Infrastructure**:
+   - Distributed collection
+   - Cloud storage integration
+   - Automated failover
+   - Load balancing

@@ -1,272 +1,230 @@
 """
-Module for cleaning and preprocessing NBA statistics data.
-
-This module implements best practices for sports data cleaning, including:
-- Handling missing values
-- Removing duplicates
-- Standardizing formats
-- Detecting outliers
-- Validating data accuracy
-- Feature engineering
+Module for cleaning and validating NBA statistics data.
 """
 
-from typing import Dict, Optional, Tuple
+import logging
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
+from datetime import datetime
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def clean_team_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean and preprocess team statistics.
+class DataValidator:
+    """Validates NBA statistics data."""
     
-    Args:
-        df: Raw team statistics DataFrame from either NBA API or Basketball Reference
+    REQUIRED_TEAM_COLUMNS = [
+        'team', 'wins', 'losses', 'offensive_rating', 'defensive_rating',
+        'pace', 'possessions', 'points', 'points_allowed'
+    ]
+    
+    REQUIRED_PLAYER_COLUMNS = [
+        'name', 'team', 'position', 'age', 'games_played', 'minutes_played',
+        'points', 'rebounds', 'assists', 'steals', 'blocks', 'turnovers',
+        'field_goals_attempted', 'field_goals_made', 'three_point_attempted',
+        'three_point_made', 'free_throws_attempted', 'free_throws_made'
+    ]
+    
+    VALID_POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'C-F', 'F-C', 'G-F', 'F-G']
+    
+    @staticmethod
+    def validate_team_stats(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+        """
+        Validate team statistics DataFrame.
         
-    Returns:
-        Cleaned DataFrame with standardized team statistics
-    """
-    # Create a copy to avoid modifying the original
-    cleaned = df.copy()
-    
-    # Map NBA API column names to our standardized names
-    if 'TEAM_NAME' in cleaned.columns:
-        cleaned = cleaned.rename(columns={
-            'TEAM_NAME': 'team',
-            'W': 'wins',
-            'L': 'losses',
-            'W_PCT': 'win_pct',
-            'OFF_RATING': 'offensive_rating',
-            'DEF_RATING': 'defensive_rating',
-            'NET_RATING': 'net_rating',
-            'EFG_PCT': 'efg_pct',
-            'TS_PCT': 'ts_pct',
-            'PACE': 'pace',
-            'AST_PCT': 'ast_pct',
-            'AST_TO': 'ast_to',
-            'AST_RATIO': 'ast_ratio',
-            'POSS': 'possessions'
-        })
-    # Map Basketball Reference column names
-    elif 'home_team' in cleaned.columns:
-        # Create a team stats DataFrame from home and away games
-        home_stats = cleaned[['home_team', 'home_team_score']].rename(
-            columns={'home_team': 'team', 'home_team_score': 'points'})
-        away_stats = cleaned[['away_team', 'away_team_score']].rename(
-            columns={'away_team': 'team', 'away_team_score': 'points'})
+        Args:
+            df: DataFrame containing team statistics
+            
+        Returns:
+            Tuple of (is_valid, list of error messages)
+        """
+        errors = []
         
-        # Combine home and away stats
-        cleaned = pd.concat([home_stats, away_stats])
-        cleaned = cleaned.groupby('team').agg({
-            'points': ['count', 'sum', 'mean']
-        }).reset_index()
-        cleaned.columns = ['team', 'games_played', 'total_points', 'points_per_game']
+        # Check required columns
+        missing_cols = [col for col in DataValidator.REQUIRED_TEAM_COLUMNS 
+                       if col not in df.columns]
+        if missing_cols:
+            errors.append(f"Missing required columns: {missing_cols}")
+        
+        # Check for duplicates
+        duplicates = df['team'].duplicated()
+        if duplicates.any():
+            errors.append(f"Duplicate team entries found: {df[duplicates]['team'].tolist()}")
+        
+        # Validate numeric ranges
+        if 'win_pct' in df.columns:
+            invalid_pct = df[~df['win_pct'].between(0, 1)]
+            if not invalid_pct.empty:
+                errors.append(f"Invalid win percentages found: {invalid_pct['team'].tolist()}")
+        
+        # Validate game counts
+        if all(col in df.columns for col in ['wins', 'losses']):
+            invalid_games = df[df['wins'] + df['losses'] > 82]
+            if not invalid_games.empty:
+                errors.append(f"Invalid game counts found: {invalid_games['team'].tolist()}")
+        
+        return len(errors) == 0, errors
     
-    # Standardize team names if the team column exists and is a Series
-    if 'team' in cleaned.columns and isinstance(cleaned['team'], pd.Series):
-        cleaned['team'] = cleaned['team'].str.upper()
-    
-    # Handle missing values for numeric columns
-    numeric_cols = cleaned.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        # Use median for efficiency stats
-        if 'rating' in col.lower() or 'pct' in col.lower():
-            cleaned[col] = cleaned[col].fillna(cleaned[col].median())
-        # Use mean for counting stats
-        else:
-            cleaned[col] = cleaned[col].fillna(cleaned[col].mean())
-    
-    # Remove duplicates if we have a team column
-    if 'team' in cleaned.columns:
-        cleaned = cleaned.drop_duplicates(subset=['team'], keep='last')
-    
-    # Detect and handle outliers
-    for col in numeric_cols:
-        cleaned[col] = handle_outliers(cleaned[col])
-    
-    return cleaned
+    @staticmethod
+    def validate_player_stats(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+        """
+        Validate player statistics DataFrame.
+        
+        Args:
+            df: DataFrame containing player statistics
+            
+        Returns:
+            Tuple of (is_valid, list of error messages)
+        """
+        errors = []
+        
+        # Check required columns
+        missing_cols = [col for col in DataValidator.REQUIRED_PLAYER_COLUMNS 
+                       if col not in df.columns]
+        if missing_cols:
+            errors.append(f"Missing required columns: {missing_cols}")
+        
+        # Check for duplicates
+        duplicates = df.duplicated(subset=['name', 'team', 'season'])
+        if duplicates.any():
+            errors.append(f"Duplicate player entries found: {df[duplicates]['name'].tolist()}")
+        
+        # Validate positions
+        if 'position' in df.columns:
+            invalid_pos = df[~df['position'].isin(DataValidator.VALID_POSITIONS)]
+            if not invalid_pos.empty:
+                errors.append(f"Invalid positions found: {invalid_pos['position'].unique().tolist()}")
+        
+        # Validate numeric ranges
+        if 'age' in df.columns:
+            invalid_age = df[~df['age'].between(18, 45)]
+            if not invalid_age.empty:
+                errors.append(f"Invalid ages found: {invalid_age['name'].tolist()}")
+        
+        return len(errors) == 0, errors
 
-def clean_player_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean and preprocess player statistics.
+class DataCleaner:
+    """Cleans NBA statistics data."""
     
-    Args:
-        df: Raw player statistics DataFrame
+    @staticmethod
+    def clean_team_names(df: pd.DataFrame, team_col: str) -> pd.DataFrame:
+        """
+        Standardize team names across different sources.
         
-    Returns:
-        Cleaned DataFrame with standardized player statistics
-    """
-    # Create a copy to avoid modifying the original
-    cleaned = df.copy()
-    
-    # Debug: Print available columns
-    print("\nAvailable columns in player stats:")
-    print(cleaned.columns.tolist())
-    
-    # Map NBA API column names to our standardized names if they exist
-    if 'PLAYER_NAME' in cleaned.columns:
-        cleaned = cleaned.rename(columns={
-            'PLAYER_NAME': 'name',
-            'TEAM_ABBREVIATION': 'team',
-            'OFF_RATING': 'offensive_rating',
-            'DEF_RATING': 'defensive_rating',
-            'NET_RATING': 'net_rating',
-            'AST_PCT': 'ast_pct',
-            'AST_TO': 'ast_to',
-            'AST_RATIO': 'ast_ratio',
-            'USG_PCT': 'usage_pct',
-            'MIN': 'minutes_played'
-        })
-    
-    # Standardize team names and player names if they exist
-    if 'team' in cleaned.columns and isinstance(cleaned['team'], pd.Series):
-        cleaned['team'] = cleaned['team'].str.upper()
-    if 'name' in cleaned.columns and isinstance(cleaned['name'], pd.Series):
-        cleaned['name'] = cleaned['name'].str.title()
-    
-    # Handle missing values
-    numeric_cols = cleaned.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        # Use 0 for counting stats
-        if any(stat in col.lower() for stat in ['points', 'rebounds', 'assists', 'steals', 'blocks']):
-            cleaned[col] = cleaned[col].fillna(0)
-        # Use median for efficiency stats
-        elif any(stat in col.lower() for stat in ['pct', 'rating', 'efficiency']):
-            cleaned[col] = cleaned[col].fillna(cleaned[col].median())
-        # Use mean for other numeric stats
-        else:
-            cleaned[col] = cleaned[col].fillna(cleaned[col].mean())
-    
-    # Remove duplicates if we have both name and team columns
-    if all(col in cleaned.columns for col in ['name', 'team']):
-        cleaned = cleaned.drop_duplicates(subset=['name', 'team'], keep='last')
-    
-    # Detect and handle outliers
-    for col in numeric_cols:
-        cleaned[col] = handle_outliers(cleaned[col])
-    
-    # Calculate per-game averages if possible
-    if 'games_played' in cleaned.columns:
-        counting_stats = ['points', 'rebounds', 'assists', 'steals', 'blocks']
-        for stat in counting_stats:
-            if stat in cleaned.columns and f'{stat}_per_game' not in cleaned.columns:
-                cleaned[f'{stat}_per_game'] = cleaned[stat] / cleaned['games_played']
-    
-    # Debug: Print columns after cleaning
-    print("\nColumns after cleaning:")
-    print(cleaned.columns.tolist())
-    
-    return cleaned
-
-def clean_odds_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Clean and preprocess betting odds data.
-    
-    Args:
-        df: Raw betting odds DataFrame
+        Args:
+            df: DataFrame containing team names
+            team_col: Name of the team column
+            
+        Returns:
+            DataFrame with standardized team names
+        """
+        team_mappings = {
+            'GSW': 'Golden State Warriors',
+            'GS': 'Golden State Warriors',
+            'GOLDEN STATE': 'Golden State Warriors',
+            'LAL': 'Los Angeles Lakers',
+            'LA Lakers': 'Los Angeles Lakers',
+            'LAC': 'Los Angeles Clippers',
+            'LA Clippers': 'Los Angeles Clippers',
+            'PHX': 'Phoenix Suns',
+            'PHI': 'Philadelphia 76ers',
+            'BKN': 'Brooklyn Nets',
+            'BRK': 'Brooklyn Nets',
+            'CHA': 'Charlotte Hornets',
+            'CHO': 'Charlotte Hornets',
+            # Add more mappings as needed
+        }
         
-    Returns:
-        Cleaned DataFrame with standardized odds data
-    """
-    # Create a copy to avoid modifying the original
-    cleaned = df.copy()
+        df = df.copy()
+        df[team_col] = df[team_col].replace(team_mappings)
+        return df
     
-    # Standardize team names
-    cleaned['home_team'] = cleaned['home_team'].str.upper()
-    cleaned['away_team'] = cleaned['away_team'].str.upper()
-    
-    # Handle missing values
-    numeric_cols = cleaned.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        # Use median for odds and lines
-        cleaned[col] = cleaned[col].fillna(cleaned[col].median())
-    
-    # Remove duplicates
-    cleaned = cleaned.drop_duplicates(subset=['game_id'], keep='last')
-    
-    # Convert odds to probabilities if not already done
-    if 'home_odds' in cleaned.columns and 'home_probability' not in cleaned.columns:
-        cleaned['home_probability'] = 1 / cleaned['home_odds']
-        cleaned['away_probability'] = 1 / cleaned['away_odds']
-        # Normalize probabilities
-        total_prob = cleaned['home_probability'] + cleaned['away_probability']
-        cleaned['home_probability'] = cleaned['home_probability'] / total_prob
-        cleaned['away_probability'] = cleaned['away_probability'] / total_prob
-    
-    return cleaned
-
-def handle_outliers(series: pd.Series, n_std: float = 3) -> pd.Series:
-    """
-    Handle outliers in a numeric series using the z-score method.
-    
-    Args:
-        series: Numeric pandas Series
-        n_std: Number of standard deviations to use for outlier detection
+    @staticmethod
+    def clean_player_names(df: pd.DataFrame, name_col: str) -> pd.DataFrame:
+        """
+        Standardize player names.
         
-    Returns:
-        Series with outliers handled
-    """
-    if not is_numeric_dtype(series):
-        return series
-    
-    # Create a copy to avoid SettingWithCopyWarning
-    series = series.copy()
-    
-    # Calculate z-scores
-    z_scores = np.abs((series - series.mean()) / series.std())
-    
-    # Replace outliers with the nearest non-outlier value
-    outliers = z_scores > n_std
-    if outliers.any():
-        series.loc[outliers] = series.loc[~outliers].median()
-    
-    return series
-
-def validate_data_consistency(
-    team_stats: pd.DataFrame,
-    player_stats: pd.DataFrame
-) -> Tuple[bool, Dict[str, str]]:
-    """
-    Validate consistency between team and player statistics.
-    
-    Args:
-        team_stats: Team statistics DataFrame
-        player_stats: Player statistics DataFrame
+        Args:
+            df: DataFrame containing player names
+            name_col: Name of the player name column
+            
+        Returns:
+            DataFrame with standardized player names
+        """
+        df = df.copy()
         
-    Returns:
-        Tuple of (is_valid, validation_messages)
-    """
-    validation_messages = {}
-    is_valid = True
-    
-    # Check team names consistency
-    team_names = set(team_stats['team'])
-    player_team_names = set(player_stats['team'])
-    
-    if not player_team_names.issubset(team_names):
-        is_valid = False
-        unknown_teams = player_team_names - team_names
-        validation_messages['team_names'] = f"Unknown teams in player stats: {unknown_teams}"
-    
-    # Check basic statistics consistency
-    if all(col in team_stats.columns for col in ['points_for', 'games_played']):
-        team_ppg = team_stats.set_index('team')['points_for']
-        player_ppg = (player_stats.groupby('team')['points']
-                     .sum()
-                     .div(team_stats.set_index('team')['games_played']))
+        # Remove Jr., Sr., III, etc.
+        df[name_col] = df[name_col].str.replace(r'\s+(Jr\.|Sr\.|I{2,}|IV)$', '', regex=True)
         
-        # Allow for small differences due to rounding
-        ppg_diff = np.abs(team_ppg - player_ppg)
-        large_diffs = ppg_diff[ppg_diff > 1].index.tolist()
+        # Remove periods from initials
+        df[name_col] = df[name_col].str.replace(r'\.', '', regex=True)
         
-        if large_diffs:
-            is_valid = False
-            validation_messages['scoring'] = (
-                f"Large scoring discrepancies for teams: {large_diffs}"
+        # Capitalize names
+        df[name_col] = df[name_col].str.title()
+        
+        return df
+    
+    @staticmethod
+    def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Handle missing values in the DataFrame.
+        
+        Args:
+            df: DataFrame containing NBA statistics
+            
+        Returns:
+            DataFrame with handled missing values
+        """
+        df = df.copy()
+        
+        # Fill missing numeric values with 0
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+        df[numeric_cols] = df[numeric_cols].fillna(0)
+        
+        # Fill missing categorical values with 'Unknown'
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        df[categorical_cols] = df[categorical_cols].fillna('Unknown')
+        
+        return df
+    
+    @staticmethod
+    def calculate_advanced_stats(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate advanced statistics.
+        
+        Args:
+            df: DataFrame containing basic statistics
+            
+        Returns:
+            DataFrame with additional advanced statistics
+        """
+        df = df.copy()
+        
+        # True Shooting Percentage
+        if all(col in df.columns for col in ['points', 'field_goals_attempted', 'free_throws_attempted']):
+            df['true_shooting_pct'] = (
+                df['points'] / 
+                (2 * (df['field_goals_attempted'] + 0.44 * df['free_throws_attempted']))
             )
-    
-    return is_valid, validation_messages
+        
+        # Effective Field Goal Percentage
+        if all(col in df.columns for col in ['field_goals_made', 'three_point_made', 'field_goals_attempted']):
+            df['efg_pct'] = (
+                (df['field_goals_made'] + 0.5 * df['three_point_made']) / 
+                df['field_goals_attempted']
+            )
+        
+        # Assist to Turnover Ratio
+        if all(col in df.columns for col in ['assists', 'turnovers']):
+            df['ast_to_ratio'] = df['assists'] / df['turnovers'].replace(0, 1)
+        
+        return df
 
 def prepare_data_for_visualization(
     team_stats: pd.DataFrame,
@@ -274,35 +232,58 @@ def prepare_data_for_visualization(
     odds_data: Optional[pd.DataFrame] = None
 ) -> Dict[str, pd.DataFrame]:
     """
-    Prepare cleaned data for visualization.
+    Clean and prepare data for visualization.
     
     Args:
-        team_stats: Team statistics DataFrame
-        player_stats: Player statistics DataFrame
-        odds_data: Optional betting odds DataFrame
+        team_stats: DataFrame containing team statistics
+        player_stats: DataFrame containing player statistics
+        odds_data: Optional DataFrame containing odds data
         
     Returns:
-        Dictionary of cleaned DataFrames ready for visualization
+        Dictionary containing cleaned DataFrames
     """
-    # Clean each dataset
-    cleaned_team_stats = clean_team_stats(team_stats)
-    cleaned_player_stats = clean_player_stats(player_stats)
-    cleaned_odds = clean_odds_data(odds_data) if odds_data is not None else None
+    logger.info("Starting data preparation for visualization")
     
-    # Validate data consistency
-    is_valid, messages = validate_data_consistency(cleaned_team_stats, cleaned_player_stats)
+    # Initialize data cleaner and validator
+    cleaner = DataCleaner()
+    validator = DataValidator()
+    
+    # Clean team statistics
+    team_stats_clean = (
+        team_stats.pipe(cleaner.clean_team_names, 'team')
+        .pipe(cleaner.handle_missing_values)
+    )
+    
+    # Validate team statistics
+    is_valid, errors = validator.validate_team_stats(team_stats_clean)
     if not is_valid:
-        print("Data consistency warnings:")
-        for key, message in messages.items():
-            print(f"- {key}: {message}")
+        logger.warning(f"Team statistics validation errors: {errors}")
     
-    # Prepare final dictionary
-    prepared_data = {
-        'team_stats': cleaned_team_stats,
-        'player_stats': cleaned_player_stats
-    }
+    # Clean player statistics
+    player_stats_clean = (
+        player_stats.pipe(cleaner.clean_player_names, 'name')
+        .pipe(cleaner.clean_team_names, 'team')
+        .pipe(cleaner.handle_missing_values)
+        .pipe(cleaner.calculate_advanced_stats)
+    )
     
-    if cleaned_odds is not None:
-        prepared_data['odds_data'] = cleaned_odds
+    # Validate player statistics
+    is_valid, errors = validator.validate_player_stats(player_stats_clean)
+    if not is_valid:
+        logger.warning(f"Player statistics validation errors: {errors}")
     
-    return prepared_data 
+    # Clean odds data if provided
+    if odds_data is not None:
+        odds_data_clean = (
+            odds_data.pipe(cleaner.clean_team_names, 'home_team')
+            .pipe(cleaner.clean_team_names, 'away_team')
+            .pipe(cleaner.handle_missing_values)
+        )
+    else:
+        odds_data_clean = None
+    
+    return {
+        'team_stats': team_stats_clean,
+        'player_stats': player_stats_clean,
+        'odds_data': odds_data_clean
+    } 
