@@ -12,11 +12,14 @@ dependencies = [
     "seaborn>=0.12.0",
     "jupyter>=1.0.0",
     "nbformat>=5.7.0",
-    "openpyxl>=3.1.0",  # For Excel file support
-    "httpx>=0.24.0",    # For API requests
-    "python-dotenv>=1.0.0",  # For environment variables
-    "basketball-reference-web-scraper>=4.12.1",  # For Basketball Reference data
-    "nba-api>=1.3.1",  # For NBA API data
+    "openpyxl>=3.1.0", # For Excel file support
+    "httpx>=0.24.0", # For API requests
+    "python-dotenv>=1.0.0", # For environment variables
+    "basketball-reference-web-scraper>=4.12.1", # For Basketball Reference data
+    "nba-api>=1.3.1", # For NBA API data
+    "pytest>=8.3.4",
+    "selenium>=4.18.1",  # For web scraping
+    "webdriver-manager>=4.0.1",  # For managing webdriver installations
 ]
 
 [project.optional-dependencies]

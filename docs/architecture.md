@@ -1,177 +1,103 @@
-# NBA Expected Value Analysis - Architecture Overview
+# NBA-EV System Architecture
 
-## System Architecture
+## System Overview
 
-The NBA Expected Value Analysis project is structured as a modular Python application with several key components:
+The NBA-EV project is designed to collect, process, and analyze NBA data through web scraping and data processing. Below is a detailed breakdown of the system architecture.
 
-### 1. Data Collection Layer (`src/collectors/`)
+## Architecture Diagram
 
-#### Lineup Scraper (`lineups_scraper.py`)
+![NBA-EV Architecture](https://kroki.io/mermaid/svg/eNo9j1tugzAQRf-7itlAVhCpUnglSqGholI_LBRNyQRowUZjuyq778RG_T1nHvf2jMsA79n-oDJ0CKmZJurcaDSUuBK3u91zoj7oE5pORkfdt_tEWKoamkiPfgaRGY8_MhtMphJC78a7nxrjF6iR7cMdxOUqNUxQkRvMzbb7XFihenLXGV03-GVjx8AWNl8xy4ZPATvC-cqovyWMjXfPMXzNpiNrQ8iz4JeAC8aZ4EiaGB_HoitVzmwYTqhvU9gohVYq_-1oCf0r1NjTTNpF96pK0_cyCs1qHc3x9UVdvFu8g8KwlJBAF6G1quUuWvgPsIk3lY2hEvIKcdO2T39mhIfS)
 
-- Real-time scraping of NBA lineup information from Rotowire
-- Player status tracking (Active, GTD, OUT, etc.)
-- Play probability estimation
-- Team identification and game time tracking
+## Component Details
 
-#### Basketball Reference Collector (`basketball_reference.py`)
+### 1. Data Collection Layer
 
-- Season statistics collection
-- Player performance metrics
-- Team statistics and records
-- Historical data access
+The foundation of the system responsible for gathering NBA data from various sources.
 
-#### NBA API Integration (`nba_api.py`)
+#### Web Scraping Components
 
-- Advanced statistics collection
-- Player and team metrics
-- Real-time game data
-- Detailed performance analytics
+- **Selenium WebDriver**: Handles dynamic content and JavaScript-rendered pages
+- **BeautifulSoup Parser**: Parses HTML content and extracts structured data
 
-#### Odds API Integration (`odds_api.py`)
+#### Core Methods
 
-- Betting odds collection
-- Game probability calculations
-- Market movement tracking
+- `get_matchups()`: Retrieves current NBA game matchups
+- `get_projections()`: Collects player projection data
+- `get_team_rankings()`: Gathers current team standings
+- `get_depth_charts()`: Obtains team depth chart information
+- `get_starting_lineups()`: Retrieves starting lineup information
+- `get_team_stats()`: Collects team statistics
+- `get_player_stats()`: Gathers individual player statistics
+- `get_injuries()`: Obtains injury report information
 
-### 2. Analysis Layer (`src/analysis/`)
+### 2. Data Processing Layer
 
-#### Efficiency Analysis (`efficiency.py`)
+Handles the transformation and organization of collected data.
 
-- Team efficiency calculations
-- Player performance metrics
-- Pace factor analysis
-- Advanced statistical computations
+#### DataFrame Generation
 
-#### Data Cleaning (`data/clean_data.py`)
+- Converts raw data into structured Pandas DataFrames
+- Handles data type conversion and formatting
+- Ensures consistent data structures
 
-- Data validation and cleaning
-- Format standardization
-- Missing data handling
-- Outlier detection
+#### Error Handling
 
-### 3. Visualization Layer (`src/visualization/`)
+- **Exception Management**: Handles various error scenarios gracefully
+- **Logging System**: Provides detailed logging for debugging and monitoring
 
-#### Plot Generation (`plots.py`)
+### 3. Output Formats
 
-- Statistical visualizations
-- Performance charts
-- Trend analysis graphs
-- Interactive data displays
+Provides data in various standardized formats for analysis and visualization.
 
-## Data Flow
+#### Pandas DataFrames
 
-1. **Data Collection**
+- Structured tabular data for analysis
+- Consistent column names and data types
+- Ready for statistical analysis and visualization
 
-   ```
-   External Sources → Collectors → Raw Data
-   (Rotowire, NBA API, Basketball Reference) → (Scrapers, API Clients) → (JSON, DataFrames)
-   ```
+#### Dictionary Outputs
 
-2. **Data Processing**
+- Flexible data structures for specific use cases
+- Nested data representation when needed
+- Easy integration with other systems
 
-   ```
-   Raw Data → Cleaning → Analysis → Processed Data
-   (JSON, DataFrames) → (Validation, Standardization) → (Calculations, Metrics) → (Clean DataFrames)
-   ```
+## Implementation Details
 
-3. **Data Presentation**
+The system is implemented using Python with the following key dependencies:
 
-   ```
-   Processed Data → Visualization → Output
-   (Clean DataFrames) → (Plots, Charts) → (PNG, Interactive Displays)
-   ```
+- `selenium`: For web automation and dynamic content handling
+- `beautifulsoup4`: For HTML parsing
+- `pandas`: For data manipulation and analysis
+- `webdriver_manager`: For ChromeDriver management
+- `logging`: For system logging and monitoring
 
-## Component Interactions
+## Error Handling and Logging
 
-### Data Collection Components
+The system includes comprehensive error handling and logging:
 
-```python
-NBALineupScraper
-├── _setup_driver()      # Configure web scraping
-├── _get_page_content()  # Fetch raw HTML
-├── _extract_team_name() # Parse team information
-├── _parse_lineup_section() # Extract lineup data
-└── get_lineups()        # Main public interface
+- All web scraping operations are wrapped in try-except blocks
+- Failed operations return empty DataFrames or dictionaries with proper structure
+- Detailed logging provides insights into system operation and failures
+- Placeholder data is provided when actual data cannot be retrieved
 
-BasketballReferenceCollector
-├── get_season_stats()   # Fetch season data
-└── get_player_season_stats() # Fetch player data
+## Future Enhancements
 
-NBAAPICollector
-├── get_team_advanced_stats()   # Advanced team metrics
-├── get_player_advanced_stats() # Advanced player metrics
-└── get_real_time_data()        # Live game data
+Planned improvements to the architecture include:
 
-OddsAPICollector
-└── get_nba_odds()      # Fetch betting odds
-```
+1. Caching layer for improved performance
+2. API endpoints for external access
+3. Real-time data updates
+4. Advanced analytics integration
+5. Data validation layer
+6. Performance monitoring and metrics
 
-### Analysis Components
+## Best Practices
 
-```python
-EfficiencyAnalyzer
-├── calculate_team_efficiency()    # Team metrics
-├── calculate_player_efficiency()  # Player metrics
-└── calculate_pace_factors()       # Pace analysis
+The system follows these key principles:
 
-DataCleaner
-├── clean_team_stats()    # Team data cleaning
-├── clean_player_stats()  # Player data cleaning
-└── prepare_data_for_visualization() # Final preparation
-```
-
-### Visualization Components
-
-```python
-Visualizer
-├── create_offensive_defensive_plot()
-├── create_pace_analysis()
-├── create_win_percentage_plot()
-├── create_scoring_distribution()
-└── create_player_visualizations()
-```
-
-## Testing Strategy
-
-The project uses pytest for testing, with tests organized in the `tests/` directory:
-
-```
-tests/
-└── test_lineups_scraper.py  # Test lineup scraping functionality
-```
-
-## Dependencies
-
-Key external dependencies:
-
-- `selenium`: Web scraping
-- `beautifulsoup4`: HTML parsing
-- `pandas`: Data manipulation
-- `numpy`: Numerical computations
-- `matplotlib/seaborn`: Visualization
-- `requests`: API communication
-
-## Configuration
-
-Environment variables (`.env`):
-
-```
-ODDS_API_KEY=<api_key>
-```
-
-## Future Considerations
-
-1. **Scalability**
-   - Implement caching for API calls
-   - Add database integration
-   - Implement async data collection
-
-2. **Features**
-   - Add more advanced statistical models
-   - Implement real-time updates
-   - Expand visualization options
-
-3. **Integration**
-   - Add more data sources
-   - Implement API endpoints
-   - Create web interface
+- Modular design for easy maintenance
+- Comprehensive error handling
+- Detailed logging for debugging
+- Type hints for better code quality
+- Unit tests for reliability
+- Documentation for maintainability
