@@ -1,179 +1,126 @@
-# NBA Stats and Betting Analysis Tool
+# NBA Expected Value Analysis
 
-A comprehensive Python-based tool for collecting and analyzing NBA statistics and betting data. This tool leverages multiple data sources including Basketball Reference and the NBA API to provide detailed insights for basketball analysis and betting purposes.
+## Overview
 
-## 🚀 Features
+This project provides tools for analyzing NBA game data, with a focus on lineup information and player statistics. It combines data from multiple sources including Rotowire, Basketball Reference, and the NBA API to create comprehensive insights for game analysis.
 
-### Data Collection
+## Features
 
-- **Team Statistics**
-  - Advanced metrics from NBA API (PACE, Offensive/Defensive Ratings)
-  - Historical game data from Basketball Reference
-  - Win/Loss records and scoring statistics
-- **Player Statistics**
-  - Advanced player metrics
-  - Season totals and per-game averages
-  - Efficiency ratings and usage statistics
-- **Betting Information**
-  - Real-time odds data from The Odds API
-  - Multiple betting markets (h2h, spreads, totals)
-  - US region odds in decimal format
+- Real-time lineup information scraping
+- Player status and probability tracking
+- Team performance analytics
+- Advanced statistical visualizations
+- Automated data collection pipeline
 
-### Analysis Capabilities
+## Documentation
 
-- **Team Analysis**
-  - Pace factors calculation
-  - Offensive and defensive efficiency metrics
-  - Net rating analysis
-- **Player Analysis**
-  - Player Impact Estimate (PIE)
-  - Usage percentages
-  - Efficiency ratings
-- **Game Simulation**
-  - Monte Carlo simulation for game outcomes
-  - Win probability calculations
-  - Projected scoring distributions
+Detailed documentation is available in the `docs` directory:
 
-### Data Export
+- [Architecture Overview](docs/architecture.md)
+- [API Documentation](docs/API.md)
+- [Data Collection Guide](docs/data_collection_guide.md)
+- [Data Cleaning Guidelines](docs/data_cleaning.md)
+- [Data Analysis Guide](docs/data_analysis.md)
+- [Visualization Guide](docs/visualization_guide.md)
+- [Analysis Insights](docs/analysis_insights.md)
+- [Contributing Guidelines](docs/CONTRIBUTING.md)
 
-- Automated Excel report generation
-- Multiple data sheets for different metrics
-- Daily updates with timestamp-based filenames
+## Installation
 
-## 📋 Requirements
-
-### System Requirements
-
-- Python 3.11 or higher
-- Operating system: Windows/macOS/Linux
-
-### Dependencies
+1. Clone the repository:
 
 ```bash
-pandas>=2.1.0
-numpy>=1.24.0
-basketball-reference-web-scraper>=4.15.3
-nba-api>=1.7
-httpx>=0.28.1
-openpyxl>=3.1.2
-python-dotenv>=1.0.0
+git clone https://github.com/yourusername/nba-ev.git
+cd nba-ev
 ```
 
-## 🛠️ Installation
-
-1. **Clone the Repository**
-
-   ```bash
-   git clone <repository-url>
-   cd nba-ev
-   ```
-
-2. **Install Dependencies**
-   Using uv (recommended):
-
-   ```bash
-   uv sync
-   ```
-
-   Or using pip:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Environment**
-   Create a `.env` file in the project root:
-
-   ```
-   ODDS_API_KEY=your_odds_api_key_here
-   ```
-
-## 📊 Usage
-
-### Basic Usage
-
-Run the main script:
+2. Create and activate a virtual environment:
 
 ```bash
-python collect_nba_stats.py
+python -m venv .venv
+source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
 ```
 
-### Output
+3. Install dependencies:
 
-The script generates an Excel file (`nba_stats_YYYYMMDD.xlsx`) containing:
+```bash
+pip install -r requirements.txt
+```
 
-- Team statistics
-- Player statistics
-- Pace factors
-- Team efficiency metrics
-- Player efficiency metrics
+## Configuration
 
-### Example Analysis
+1. Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` with your API keys:
+
+```
+ODDS_API_KEY=your_key_here
+```
+
+## Usage
+
+### Lineup Scraping
 
 ```python
-from nba_stats import NBAAnalyzer
+from src.collectors.lineups_scraper import NBALineupScraper
 
-# Initialize analyzer
-analyzer = NBAAnalyzer(collector)
+scraper = NBALineupScraper()
+lineups = scraper.get_lineups()
 
-# Simulate a game
-result = analyzer.simulate_game("Lakers", "Celtics", n_simulations=10000)
-print(f"Win probability: {result['team1_win_prob']:.2%}")
+# Access lineup information
+for game_id, game_lineups in lineups.items():
+    print(f"\nGame: {game_id}")
+    for team, lineup_df in game_lineups.items():
+        print(f"\n{team} Lineup:")
+        print(lineup_df)
 ```
 
-## 📚 Data Sources
+### Data Analysis
 
-### Basketball Reference
+```python
+from src.analysis.efficiency import calculate_team_efficiency
+from src.collectors.basketball_reference import get_season_stats
 
-- Team and player statistics
-- Historical game data
-- Season totals and averages
+# Get team statistics
+team_stats = get_season_stats(2024)
 
-### NBA API
+# Calculate efficiency metrics
+efficiency_metrics = calculate_team_efficiency(team_stats)
+print(efficiency_metrics)
+```
 
-- Advanced team metrics
-- Player performance data
-- Real-time statistics
+## Project Structure
 
-### The Odds API
+```
+nba-ev/
+├── docs/               # Documentation files
+├── src/               # Source code
+│   ├── collectors/    # Data collection modules
+│   │   ├── lineups_scraper.py
+│   │   ├── basketball_reference.py
+│   │   ├── nba_api.py
+│   │   └── odds_api.py
+│   ├── analysis/      # Analysis modules
+│   ├── visualization/ # Visualization modules
+│   └── data/         # Data processing
+├── tests/            # Test files
+└── requirements.txt  # Project dependencies
+```
 
-- Current betting odds
-- Multiple betting markets
-- US sportsbook data
+## Contributing
 
-## 🤝 Contributing
+Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
-We welcome contributions! Please follow these steps:
+## License
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-### Development Guidelines
+## Acknowledgments
 
-- Follow PEP 8 style guidelines
-- Add tests for new features
-- Update documentation as needed
-- Use type hints for better code clarity
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔍 API Documentation
-
-For detailed API documentation, see [API.md](docs/API.md).
-
-## 🛣️ Roadmap
-
-- [ ] Add support for historical odds data
-- [ ] Implement machine learning predictions
-- [ ] Add player prop betting analysis
-- [ ] Create web interface for data visualization
-- [ ] Add support for real-time updates during games
-
-## 📫 Support
-
-For support, please open an issue in the GitHub repository or contact the maintainers directly.
+- [Basketball Reference](https://www.basketball-reference.com/)
+- [NBA API](https://github.com/swar/nba_api)
+- [Rotowire](https://www.rotowire.com/)

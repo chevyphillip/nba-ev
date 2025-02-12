@@ -1,8 +1,3 @@
-# Environment variables
-.env
-.env.*
-
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,33 +18,11 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Data files
-*.xlsx
-*.xls
-*.csv
-*.json
-data/
-
-# IDE
+.env
+.venv
+venv/
+ENV/
 .idea/
 .vscode/
-*.swp
-*.swo
-.DS_Store
-
-# Virtual Environment
-venv/
-env/
-ENV/
-.python-version
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# Distribution
 *.log
-logs/
+.DS_Store
