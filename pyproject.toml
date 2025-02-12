@@ -1,0 +1,21 @@
+[project]
+name = "nba-ev"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "basketball-reference-web-scraper>=4.15.3",
+    "black>=25.1.0",
+    "chromadb>=0.6.3",
+    "httpx>=0.28.1",
+    "matplotlib>=3.10.0",
+    "monaco>=0.15.1",
+    "nba-api>=1.7",
+    "numpy>=1.26.4",
+    "openpyxl>=3.1.2",
+    "pandas>=2.2.3",
+    "ruff>=0.9.6",
+    "scikit-learn>=1.6.1",
+    "seaborn>=0.13.2",
+]
