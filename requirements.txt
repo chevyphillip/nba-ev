@@ -27,7 +27,7 @@ pyarrow==15.0.0
 
 # Development
 pytest==8.0.1
-black==24.2.0
+black==24.3.0
 isort==5.13.2
 mypy==1.8.0
 pylint==3.0.3
