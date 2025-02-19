@@ -12,13 +12,33 @@ from ratelimit import limits, sleep_and_retry, RateLimitException
 import time
 from discord import Embed, Color
 from typing import Tuple, Optional
+import os
 
-# Configure logging
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Create a log filename with timestamp
+log_filename = f"logs/ev_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+# Configure logging to write to both file and console
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Log startup information
+logger.info("Starting NBA EV Calculator")
+logger.info(f"Logging to file: {log_filename}")
+logger.info("Configuration:")
+logger.info(f"- Consensus Odds Threshold: {CONSENSUS_ODDS_THRESHOLD}")
+logger.info(f"- Minimum Books for Consensus: {MIN_BOOKS_FOR_CONSENSUS}")
+logger.info(f"- Edge Thresholds: Min={MIN_EDGE_THRESHOLD}, Max={MAX_EDGE_THRESHOLD}")
+logger.info(f"- Kelly Fraction: {KELLY_FRACTION}")
 
 # --- CONFIGURATION ---
 BOT_TOKEN = "MTMzMjQxMDA5MzM0MTI0NTUzMA.G-G_sV.7m_7q9zoBDmU6tQvmXTMSDixEAxcoghvNkSfKU"
@@ -166,8 +186,11 @@ def devig_pinnacle_odds(odds1: float, odds2: float, pinnacle_hold: float) -> tup
     prob1 = calculate_implied_probability(odds1)
     prob2 = calculate_implied_probability(odds2)
     total_prob = prob1 + prob2
-    true_prob1 = (prob1 / total_prob) * (1 - pinnacle_hold)
-    true_prob2 = (prob2 / total_prob) * (1 - pinnacle_hold)
+    
+    # Remove hold adjustment since we're getting fair odds from multiple books
+    true_prob1 = prob1 / total_prob
+    true_prob2 = prob2 / total_prob
+    
     return true_prob1, true_prob2
 
 def calculate_edge(bet_odds: float, true_prob: float) -> float:
@@ -271,10 +294,36 @@ def calculate_consensus_line(bookmakers: list, market_key: str, player_name: str
     total_weight = 0
     books_found = []
     all_prices = {}  # Store all prices for logging
+    line_value = None  # Track the line value we're looking for
     
     logger.info(f"Calculating consensus line for {player_name} {market_key} {'Over' if is_over else 'Under'}")
     logger.info(f"Checking {len(bookmakers)} bookmakers for consensus")
     
+    # First find the line value from a major book
+    for book in bookmakers:
+        if book['key'] in ['fanduel', 'draftkings', 'betmgm']:
+            try:
+                market = next((m for m in book.get('markets', []) if m['key'] == market_key), None)
+                if market:
+                    outcome = next(
+                        (o for o in market.get('outcomes', []) 
+                         if o.get('description', '') == player_name and 
+                         ((is_over and o.get('name', '').lower() == 'over') or 
+                          (not is_over and o.get('name', '').lower() == 'under'))),
+                        None
+                    )
+                    if outcome and 'point' in outcome:
+                        line_value = outcome['point']
+                        logger.info(f"Using line value {line_value} from {book['key']}")
+                        break
+            except Exception as e:
+                logger.error(f"Error getting line value from {book['key']}: {str(e)}")
+                continue
+    
+    if line_value is None:
+        logger.warning("Could not determine line value from major books")
+        return None, None, None
+
     # Log available bookmakers
     logger.info("Available bookmakers:")
     for book in bookmakers:
@@ -324,28 +373,35 @@ def calculate_consensus_line(bookmakers: list, market_key: str, player_name: str
             if outcome and opposing:
                 price = outcome.get('price')
                 opp_price = opposing.get('price')
-                if price and opp_price:
+                point = outcome.get('point')  # Get the line value
+                
+                if price and opp_price and point:
                     # Log the matched outcomes for debugging
                     logger.info(f"Found matching outcomes for {book_name}:")
-                    logger.info(f"  Main: {outcome.get('name')} {outcome.get('point')} @ {price}")
-                    logger.info(f"  Opposing: {opposing.get('name')} {opposing.get('point')} @ {opp_price}")
+                    logger.info(f"  Main: {outcome.get('name')} {point} @ {price}")
+                    logger.info(f"  Opposing: {opposing.get('name')} {point} @ {opp_price}")
                     
-                    all_prices[book_name] = (price, opp_price)
-                    
-                    # If it's a weighted book or we don't have enough weighted books yet
-                    if book_name in WEIGHTED_BOOKS or len(books_found) < MIN_BOOKS_FOR_CONSENSUS:
-                        weight = WEIGHTED_BOOKS.get(book_name, 0.2)  # Use 0.2 as default weight for non-weighted books
-                        weighted_prices.extend([price] * int(weight * 10))
-                        weighted_opposing_prices.extend([opp_price] * int(weight * 10))
-                        total_weight += weight
-                        books_found.append(book_name)
-                        logger.info(f"Added odds from {book_name} (weight: {weight}): {price:+d}/{opp_price:+d}")
-            else:
-                logger.debug(f"No matching outcomes found for {book_name} - Main: {outcome is not None}, Opposing: {opposing is not None}")
+                    # Only include odds if they're for the same line value
+                    if point == line_value:  # line_value is from the original outcome
+                        all_prices[book_name] = (price, opp_price)
+                        
+                        # If it's a weighted book or we don't have enough weighted books yet
+                        if book_name in WEIGHTED_BOOKS or len(books_found) < MIN_BOOKS_FOR_CONSENSUS:
+                            weight = WEIGHTED_BOOKS.get(book_name, 0.2)  # Use 0.2 as default weight for non-weighted books
+                            weighted_prices.extend([price] * int(weight * 10))
+                            weighted_opposing_prices.extend([opp_price] * int(weight * 10))
+                            total_weight += weight
+                            books_found.append(book_name)
+                            logger.info(f"Added odds from {book_name} (weight: {weight}): {price:+d}/{opp_price:+d}")
+                        else:
+                            logger.info(f"Skipping {book_name} - different line value: {point} vs {line_value}")
+                else:
+                    logger.debug(f"No matching outcomes found for {book_name} - Main: {outcome is not None}, Opposing: {opposing is not None}")
                 
         except Exception as e:
             logger.error(f"Error processing {book_name} for consensus: {str(e)}")
-    
+            continue
+
     # Log all available prices for comparison
     if all_prices:
         logger.info("Available odds from all books:")
@@ -444,23 +500,28 @@ def calculate_ev(bet_odds: float, fair_odds: float) -> Tuple[float, float]:
     bet_prob = calculate_implied_probability(bet_odds)
     fair_prob = calculate_implied_probability(fair_odds)
     
-    # Calculate decimal odds for the bet
-    bet_decimal = american_to_decimal(bet_odds)
+    # Calculate profit multiplier
+    if bet_odds < 0:
+        profit = abs(100 / bet_odds)
+    else:
+        profit = bet_odds / 100
     
-    # Calculate edge (EG)
-    # Edge = (1/implied probability) * fair probability - 1
+    # Calculate EV
+    ev = (fair_prob * profit - (1 - fair_prob)) * 100
+    
+    # Calculate edge
     edge = (1 / bet_prob) * fair_prob - 1
     edge_percentage = edge * 100
     
-    # Calculate EV
-    # EV = (win probability * win amount) - (loss probability * loss amount)
-    win_amount = (bet_decimal - 1)  # What you win on a $1 bet
-    loss_amount = 1  # What you lose on a $1 bet
+    # Log calculations for debugging
+    logger.info(f"EV Calculation Details:")
+    logger.info(f"  Bet odds: {bet_odds:+d} (implied prob: {bet_prob:.4f})")
+    logger.info(f"  Fair odds: {fair_odds:+.2f} (implied prob: {fair_prob:.4f})")
+    logger.info(f"  Profit multiplier: {profit:.4f}")
+    logger.info(f"  EV: {ev:.2f}%")
+    logger.info(f"  Edge: {edge_percentage:.2f}%")
     
-    ev = (fair_prob * win_amount) - ((1 - fair_prob) * loss_amount)
-    ev_percentage = ev * 100
-    
-    return edge_percentage, ev_percentage
+    return edge_percentage, ev
 
 def calculate_fair_value_change(current_fv: float, previous_fv: float) -> float:
     """
