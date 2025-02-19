@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  redis:
+    image: docker.io/library/redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m src.workers.scraper_worker
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ODDS_API_KEY=${ODDS_API_KEY}
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    volumes:
+      - type: bind
+        source: ./
+        target: /app
+        bind:
+          propagation: shared
+
+  prometheus:
+    image: docker.io/prom/prometheus:v2.45.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:Z
+      - prometheus_data:/prometheus:Z
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+
+  grafana:
+    image: docker.io/grafana/grafana:10.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - type: volume
+        source: grafana_data
+        target: /var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    depends_on:
+      - prometheus
+
+volumes:
+  redis_data:
+    name: nba_ev_redis_data
+  prometheus_data:
+    name: nba_ev_prometheus_data
+  grafana_data:
+    name: nba_ev_grafana_data
