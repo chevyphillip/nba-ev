@@ -14,8 +14,9 @@ rq==1.15.1
 prometheus-client==0.19.0
 requests==2.31.0
 beautifulsoup4==4.12.3
-aiohttp==3.9.3
+aiohttp==3.10.11
 tqdm==4.66.3
+
 psutil==5.9.8
 
 # Database
