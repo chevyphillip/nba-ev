@@ -14,32 +14,6 @@ from discord import Embed, Color
 from typing import Tuple, Optional
 import os
 
-# Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
-
-# Create a log filename with timestamp
-log_filename = f"logs/ev_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-
-# Configure logging to write to both file and console
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Log startup information
-logger.info("Starting NBA EV Calculator")
-logger.info(f"Logging to file: {log_filename}")
-logger.info("Configuration:")
-logger.info(f"- Consensus Odds Threshold: {CONSENSUS_ODDS_THRESHOLD}")
-logger.info(f"- Minimum Books for Consensus: {MIN_BOOKS_FOR_CONSENSUS}")
-logger.info(f"- Edge Thresholds: Min={MIN_EDGE_THRESHOLD}, Max={MAX_EDGE_THRESHOLD}")
-logger.info(f"- Kelly Fraction: {KELLY_FRACTION}")
-
 # --- CONFIGURATION ---
 BOT_TOKEN = "MTMzMjQxMDA5MzM0MTI0NTUzMA.G-G_sV.7m_7q9zoBDmU6tQvmXTMSDixEAxcoghvNkSfKU"
 ODDS_API_KEY = "fee2d65aaf5ca5e90072b4b6e54e4f43"
@@ -95,6 +69,32 @@ COLORS = {
     'warning': Color.orange(),
     'error': Color.red()
 }
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Create a log filename with timestamp
+log_filename = f"logs/ev_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+# Configure logging to write to both file and console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Log startup information
+logger.info("Starting NBA EV Calculator")
+logger.info(f"Logging to file: {log_filename}")
+logger.info("Configuration:")
+logger.info(f"- Consensus Odds Threshold: {CONSENSUS_ODDS_THRESHOLD}")
+logger.info(f"- Minimum Books for Consensus: {MIN_BOOKS_FOR_CONSENSUS}")
+logger.info(f"- Edge Thresholds: Min={MIN_EDGE_THRESHOLD}, Max={MAX_EDGE_THRESHOLD}")
+logger.info(f"- Kelly Fraction: {KELLY_FRACTION}")
 
 # --- RATE LIMITING DECORATORS ---
 @sleep_and_retry
