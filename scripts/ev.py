@@ -20,7 +20,7 @@ ODDS_API_KEY = "fee2d65aaf5ca5e90072b4b6e54e4f43"
 CHANNEL_ID = 1318707908896362568
 SPORT = 'basketball_nba'
 REGION = 'us,us2,us_dfs,eu,us_ex'
-KELLY_FRACTION = 0.5
+KELLY_FRACTION = 0.25
 PROP_MARKETS = 'player_points,player_rebounds,player_assists,player_threes,player_blocks,player_steals'
 PROP_BOOKMAKERS = 'pinnacle,betonlineag,fanduel,draftkings,fliff,underdog,betmgm,betrivers,ballybet,espnbet,novig,prophetx'
 INCLUDE_LINKS = 'true'
@@ -39,7 +39,10 @@ WEIGHTED_BOOKS = {
     'underdog': 0.2,     # Added Underdog
     'fliff': 0.2         # Added Fliff
 }
-MIN_BOOKS_FOR_CONSENSUS = 2  # Keep minimum books at 2
+MIN_BOOKS_FOR_CONSENSUS = 2  # Minimum number of books needed for consensus
+MAX_PROB_DIFF = 0.10  # Maximum allowed probability difference (10%)
+MIN_EDGE_THRESHOLD = 0.02  # Minimum edge required (2%)
+MAX_EDGE_THRESHOLD = 0.20  # Maximum edge allowed (20%)
 
 # Rate limiting configuration
 CALLS_PER_SECOND = 1  # Free tier: 1 request per second
@@ -55,8 +58,6 @@ BASE_UNIT = BANKROLL * MIN_UNIT_PCT  # Base unit size ($10 for $1000 bankroll)
 # Alert Settings
 ALERT_DELAY = 3  # Seconds to wait between each +EV alert
 MAX_ALERTS_PER_EVENT = 10  # Increased from 5 to allow more alerts
-MIN_EDGE_THRESHOLD = 0.001   # Reduced to 0.1% minimum edge (essentially no minimum)
-MAX_EDGE_THRESHOLD = 0.20   # Increased to 20% maximum edge allowed
 MAX_EDGE_CALC = 0.15       # Increased to 15% maximum edge for calculations
 
 # --- DATA STORAGE ---
@@ -276,179 +277,108 @@ def is_plus_ev(edge: float, min_threshold: float = MIN_EDGE_THRESHOLD, max_thres
     """
     return edge > min_threshold and edge <= max_threshold
 
-def calculate_consensus_line(bookmakers: list, market_key: str, player_name: str, is_over: bool) -> tuple:
-    """
-    Calculate consensus line from weighted bookmakers.
-    
-    Args:
-        bookmakers: List of bookmaker data
-        market_key: The market to look for (points, rebounds, etc.)
-        player_name: Name of the player
-        is_over: Whether looking for over or under
-    
-    Returns:
-        Tuple of (consensus_price, opposing_price, consensus_hold)
-    """
-    weighted_prices = []
-    weighted_opposing_prices = []
-    total_weight = 0
-    books_found = []
-    all_prices = {}  # Store all prices for logging
-    line_value = None  # Track the line value we're looking for
-    
-    logger.info(f"Calculating consensus line for {player_name} {market_key} {'Over' if is_over else 'Under'}")
-    logger.info(f"Checking {len(bookmakers)} bookmakers for consensus")
-    
-    # First find the line value from a major book
-    for book in bookmakers:
-        if book['key'] in ['fanduel', 'draftkings', 'betmgm']:
-            try:
-                market = next((m for m in book.get('markets', []) if m['key'] == market_key), None)
-                if market:
-                    outcome = next(
-                        (o for o in market.get('outcomes', []) 
-                         if o.get('description', '') == player_name and 
-                         ((is_over and o.get('name', '').lower() == 'over') or 
-                          (not is_over and o.get('name', '').lower() == 'under'))),
-                        None
-                    )
-                    if outcome and 'point' in outcome:
-                        line_value = outcome['point']
-                        logger.info(f"Using line value {line_value} from {book['key']}")
-                        break
-            except Exception as e:
-                logger.error(f"Error getting line value from {book['key']}: {str(e)}")
-                continue
-    
-    if line_value is None:
-        logger.warning("Could not determine line value from major books")
-        return None, None, None
+def calculate_consensus_line(player, market_type, prop_type, line_value, bookmakers, logger):
+    """Calculate consensus line from multiple bookmakers."""
+    try:
+        available_books = []
+        weighted_odds = []
+        total_weight = 0
+        
+        # Book weights (higher weight = more influence on consensus)
+        book_weights = {
+            'pinnacle': 0.5,
+            'fanduel': 0.3,
+            'draftkings': 0.3,
+            'betmgm': 0.3,
+            'betonlineag': 0.4,
+            'fliff': 0.2,
+            'underdog': 0.2
+        }
 
-    # Log available bookmakers
-    logger.info("Available bookmakers:")
-    for book in bookmakers:
-        book_name = book.get('key', 'unknown')
-        markets = book.get('markets', [])
-        logger.info(f"- {book_name}: {len(markets)} markets")
-        
-        # Log market details for debugging
-        for market in markets:
-            market_name = market.get('key', 'unknown')
-            outcomes = market.get('outcomes', [])
-            logger.info(f"  - {market_name}: {len(outcomes)} outcomes")
-            
-            # Log a sample of outcomes for debugging
-            for outcome in outcomes[:2]:  # Log first 2 outcomes as sample
-                desc = outcome.get('description', 'No description')
-                price = outcome.get('price', 'No price')
-                logger.info(f"    - {desc}: {price}")
-
-    # First try to get odds from weighted books
-    for book in bookmakers:
-        book_name = book.get('key', 'unknown')
-        try:
-            market = next((m for m in book.get('markets', []) if m['key'] == market_key), None)
-            if not market:
-                logger.debug(f"No {market_key} market found for {book_name}")
-                continue
-                
-            # Modified outcome matching to use name field for over/under
-            outcome = next(
-                (o for o in market.get('outcomes', []) 
-                 if o.get('description', '') == player_name and 
-                 ((is_over and o.get('name', '').lower() == 'over') or 
-                  (not is_over and o.get('name', '').lower() == 'under'))),
-                None
-            )
-            
-            # Modified opposing outcome matching to use name field
-            opposing = next(
-                (o for o in market.get('outcomes', []) 
-                 if o.get('description', '') == player_name and 
-                 ((is_over and o.get('name', '').lower() == 'under') or 
-                  (not is_over and o.get('name', '').lower() == 'over'))),
-                None
-            )
-            
-            if outcome and opposing:
-                price = outcome.get('price')
-                opp_price = opposing.get('price')
-                point = outcome.get('point')  # Get the line value
-                
-                if price and opp_price and point:
-                    # Log the matched outcomes for debugging
-                    logger.info(f"Found matching outcomes for {book_name}:")
-                    logger.info(f"  Main: {outcome.get('name')} {point} @ {price}")
-                    logger.info(f"  Opposing: {opposing.get('name')} {point} @ {opp_price}")
-                    
-                    # Only include odds if they're for the same line value
-                    if point == line_value:  # line_value is from the original outcome
-                        all_prices[book_name] = (price, opp_price)
-                        
-                        # If it's a weighted book or we don't have enough weighted books yet
-                        if book_name in WEIGHTED_BOOKS or len(books_found) < MIN_BOOKS_FOR_CONSENSUS:
-                            weight = WEIGHTED_BOOKS.get(book_name, 0.2)  # Use 0.2 as default weight for non-weighted books
-                            weighted_prices.extend([price] * int(weight * 10))
-                            weighted_opposing_prices.extend([opp_price] * int(weight * 10))
-                            total_weight += weight
-                            books_found.append(book_name)
-                            logger.info(f"Added odds from {book_name} (weight: {weight}): {price:+d}/{opp_price:+d}")
-                        else:
-                            logger.info(f"Skipping {book_name} - different line value: {point} vs {line_value}")
-                else:
-                    logger.debug(f"No matching outcomes found for {book_name} - Main: {outcome is not None}, Opposing: {opposing is not None}")
-                
-        except Exception as e:
-            logger.error(f"Error processing {book_name} for consensus: {str(e)}")
-            continue
-
-    # Log all available prices for comparison
-    if all_prices:
-        logger.info("Available odds from all books:")
-        for book_name, (price, opp_price) in all_prices.items():
-            hold = calculate_hold(price, opp_price)
-            logger.info(f"{book_name}: {price:+d}/{opp_price:+d} (Hold: {hold*100:.2f}%)")
-    
-    # Check if we have enough weighted books
-    if len(books_found) < MIN_BOOKS_FOR_CONSENSUS:
-        logger.warning(f"Insufficient books ({len(books_found)}) for consensus line - {player_name} {market_key}")
-        return None, None, None
-        
-    logger.info(f"Using {len(books_found)} books for consensus: {', '.join(books_found)}")
-    
-    # Calculate consensus prices using weighted median
-    if weighted_prices and weighted_opposing_prices:
-        consensus_price = sorted(weighted_prices)[len(weighted_prices)//2]
-        consensus_opposing = sorted(weighted_opposing_prices)[len(weighted_opposing_prices)//2]
-        
-        # Calculate hold percentage
-        consensus_hold = calculate_hold(consensus_price, consensus_opposing)
-        
-        # Verify odds are within threshold (now handling American odds properly)
-        # Convert differences to percentage points for American odds
-        def american_odds_diff_pct(odds1: float, odds2: float) -> float:
-            """Calculate percentage difference between American odds properly."""
-            prob1 = calculate_implied_probability(odds1)
-            prob2 = calculate_implied_probability(odds2)
-            # Log the actual probabilities being compared
-            logger.info(f"Comparing probabilities: {prob1:.4f} vs {prob2:.4f}")
-            return abs(prob1 - prob2) * 100  # Convert to percentage points
-        
-        # Calculate max differences in implied probabilities
-        max_price_diff = max(american_odds_diff_pct(p, consensus_price) for p in set(weighted_prices))
-        max_opp_diff = max(american_odds_diff_pct(p, consensus_opposing) for p in set(weighted_opposing_prices))
-        
-        logger.info(f"Max implied probability differences: {max_price_diff:.2f}%/{max_opp_diff:.2f}%")
-        
-        if max_price_diff > CONSENSUS_ODDS_THRESHOLD or max_opp_diff > CONSENSUS_ODDS_THRESHOLD:
-            logger.warning(f"Odds difference too high for consensus: {max_price_diff:.2f}%/{max_opp_diff:.2f}%")
+        # First check if we have enough books
+        valid_books = [book for book in bookmakers if book in book_weights]
+        if len(valid_books) < MIN_BOOKS_FOR_CONSENSUS:
+            logger.warning(f"Insufficient bookmakers ({len(valid_books)}) for consensus. Need at least {MIN_BOOKS_FOR_CONSENSUS}.")
             return None, None, None
-            
-        logger.info(f"Final consensus line: {consensus_price:+d}/{consensus_opposing:+d} ({consensus_hold*100:.2f}% hold)")
-        return consensus_price, consensus_opposing, consensus_hold
-    
-    logger.warning(f"No valid consensus line available for {player_name} {market_key}")
-    return None, None, None
+
+        # Get odds from each book
+        for book_name, book_data in bookmakers.items():
+            if book_name not in book_weights:
+                continue
+
+            try:
+                main_odds, opp_odds = find_matching_odds(
+                    player, market_type, prop_type, line_value, book_data, logger
+                )
+                
+                if main_odds and opp_odds:
+                    # Convert odds to probabilities
+                    main_prob = american_to_prob(main_odds)
+                    opp_prob = american_to_prob(opp_odds)
+                    
+                    # Calculate hold
+                    hold = (main_prob + opp_prob) - 1
+                    
+                    logger.info(f"Added odds from {book_name} (weight: {book_weights[book_name]}): {main_odds}/{opp_odds}")
+                    available_books.append({
+                        'name': book_name,
+                        'main_odds': main_odds,
+                        'opp_odds': opp_odds,
+                        'main_prob': main_prob,
+                        'opp_prob': opp_prob,
+                        'hold': hold,
+                        'weight': book_weights[book_name]
+                    })
+                    weighted_odds.append({
+                        'main_prob': main_prob,
+                        'opp_prob': opp_prob,
+                        'weight': book_weights[book_name]
+                    })
+                    total_weight += book_weights[book_name]
+            except Exception as e:
+                logger.warning(f"Error getting odds from {book_name}: {str(e)}")
+                continue
+
+        if not available_books:
+            logger.warning("No valid odds found from any bookmaker")
+            return None, None, None
+
+        # Log available odds
+        logger.info("Available odds from all books:")
+        for book in available_books:
+            logger.info(f"{book['name']}: {book['main_odds']}/{book['opp_odds']} (Hold: {book['hold']*100:.2f}%)")
+
+        # Calculate weighted average probabilities
+        weighted_main_prob = sum(odds['main_prob'] * odds['weight'] for odds in weighted_odds) / total_weight
+        weighted_opp_prob = sum(odds['opp_prob'] * odds['weight'] for odds in weighted_odds) / total_weight
+
+        # Check probability differences
+        max_main_diff = 0
+        max_opp_diff = 0
+        for book in available_books:
+            main_diff = abs(book['main_prob'] - weighted_main_prob)
+            opp_diff = abs(book['opp_prob'] - weighted_opp_prob)
+            max_main_diff = max(max_main_diff, main_diff)
+            max_opp_diff = max(max_opp_diff, opp_diff)
+            logger.info(f"Comparing probabilities: {book['main_prob']:.4f} vs {weighted_main_prob:.4f}")
+            logger.info(f"Comparing probabilities: {book['opp_prob']:.4f} vs {weighted_opp_prob:.4f}")
+
+        logger.info(f"Max implied probability differences: {max_main_diff*100:.2f}%/{max_opp_diff*100:.2f}%")
+
+        # Only reject if both differences are too high
+        if max_main_diff > MAX_PROB_DIFF and max_opp_diff > MAX_PROB_DIFF:
+            logger.warning(f"Odds difference too high for consensus: {max_main_diff*100:.2f}%/{max_opp_diff*100:.2f}%")
+            return None, None, None
+
+        # Convert consensus probabilities back to American odds
+        consensus_main = prob_to_american(weighted_main_prob)
+        consensus_opp = prob_to_american(weighted_opp_prob)
+
+        return consensus_main, consensus_opp, len(available_books)
+
+    except Exception as e:
+        logger.error(f"Error calculating consensus line: {str(e)}")
+        return None, None, None
 
 def calculate_fair_value(odds1: float, odds2: float) -> Tuple[float, float, float]:
     """
@@ -709,7 +639,7 @@ async def process_player_props(event_id: str, props_data: dict, channel) -> None
                     # Get reference odds (either Pinnacle or consensus)
                     if use_consensus:
                         pin_price, pin_opposing_price, pin_hold = calculate_consensus_line(
-                            all_bookmakers, market_key, player_name, is_over
+                            player_name, market_key, prop_type, line_value, all_bookmakers, logger
                         )
                         if not pin_price or not pin_opposing_price:
                             props_filtered_consensus += 1
@@ -927,6 +857,57 @@ async def process_player_props(event_id: str, props_data: dict, channel) -> None
         if positive_edges_found > 0:
             alert_conversion = (alerts_sent / positive_edges_found) * 100
             logger.info(f"Alert conversion rate: {alert_conversion:.1f}%")
+
+def american_to_prob(odds: int) -> float:
+    """Convert American odds to probability."""
+    if odds > 0:
+        return 100 / (odds + 100)
+    else:
+        return abs(odds) / (abs(odds) + 100)
+
+def prob_to_american(prob: float) -> int:
+    """Convert probability to American odds."""
+    if prob >= 0.5:
+        return int(round(-100 * prob / (1 - prob)))
+    else:
+        return int(round(100 * (1 - prob) / prob))
+
+def find_matching_odds(player: str, market_type: str, prop_type: str, line_value: float, 
+                      book_data: dict, logger) -> tuple:
+    """Find matching odds for a player prop from a bookmaker."""
+    try:
+        market = next((m for m in book_data.get('markets', []) 
+                      if m['key'] == market_type), None)
+        if not market:
+            return None, None
+
+        # Find main outcome
+        main_outcome = next(
+            (o for o in market.get('outcomes', [])
+             if o.get('description', '') == player and
+             o.get('point') == line_value and
+             o.get('name', '').lower() == prop_type.lower()),
+            None
+        )
+
+        # Find opposing outcome
+        opp_type = 'under' if prop_type.lower() == 'over' else 'over'
+        opp_outcome = next(
+            (o for o in market.get('outcomes', [])
+             if o.get('description', '') == player and
+             o.get('point') == line_value and
+             o.get('name', '').lower() == opp_type),
+            None
+        )
+
+        if main_outcome and opp_outcome:
+            return main_outcome.get('price'), opp_outcome.get('price')
+        
+        return None, None
+
+    except Exception as e:
+        logger.error(f"Error finding matching odds: {str(e)}")
+        return None, None
 
 # --- DISCORD BOT ---
 class MyClient(discord.Client):
