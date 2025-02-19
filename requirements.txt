@@ -15,7 +15,8 @@ prometheus-client==0.19.0
 requests==2.31.0
 beautifulsoup4==4.12.3
 aiohttp==3.10.11
-tqdm==4.66.2
+tqdm==4.66.3
+
 psutil==5.9.8
 
 # Database
@@ -27,7 +28,7 @@ pyarrow==15.0.0
 
 # Development
 pytest==8.0.1
-black==24.2.0
+black==24.3.0
 isort==5.13.2
 mypy==1.8.0
 pylint==3.0.3
